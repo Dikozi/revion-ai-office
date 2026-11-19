@@ -52,7 +52,7 @@ flowchart LR
 ```
 
 - **Node.js, zero npm dependencies** — only built-in modules (`http`, `child_process`, `crypto`, …). ~11.6k lines across 42 server modules, plus ~4k lines of front end. PDFs and images are rendered with headless Chrome over the DevTools pipe, video with ffmpeg, Excel files are written by hand (`xlsx.js`, no library).
-- **Each AI employee is a short-lived `claude -p` process**, started for one task and closed afterwards — the office costs nothing while idle. See [`core/agent-runner.js`](core/agent-runner.js).
+- **Each AI employee is a short-lived `claude -p` process**, started for one task and closed afterwards — the office costs nothing while idle. See [`server/claude.js`](server/claude.js).
 - **Code does the math, the model writes the words.** All numbers, charts and comparisons in reports are computed deterministically; the model gets the finished numbers and writes the conclusion and 3 recommendations. This made reports both cheaper and impossible to "hallucinate" numbers into.
 - **Self-updating server:** a systemd timer checks GitHub every 3 minutes, syntax-checks the new version, waits until no agent is running, swaps the code, and **rolls back automatically** if the office doesn't come up in 20 seconds.
 
@@ -114,22 +114,41 @@ The demo serves the real portal front end with made-up data for a fictional furn
 
 ---
 
-## What's in this repository
+## Code tour
 
-| Path | What it is |
+These are production modules, copied as-is except for company names and server paths. They import each other like in the real project; integrations with the company's ad account, CRM and sales system are not included, so the server itself doesn't start from this repo — read it, run the tests, run the demo.
+
+| File | Look at |
 |---|---|
-| `core/agent-runner.js` | How an AI employee is launched: CLI resolution on Windows/Linux, the economical flag set, a shared concurrency limiter, orphan-process cleanup after a crash, stream-JSON parsing, human-readable failure reasons |
-| `portal/` | The production portal front end (vanilla JS, no framework) |
-| `demo/` | Demo server and made-up data |
-| `screenshots/` | Screens of the demo |
+| [`server/claude.js`](server/claude.js) | How an AI employee is launched: the economical flag set, a shared concurrency limiter for every kind of run, orphan-process cleanup after a crash, stream-JSON parsing, human-readable failure reasons |
+| [`server/office.js`](server/office.js) | The dispatcher. `runPlan()` — manager plan with a JSON schema whose `employee` enum is built from active agents; `prepareWorkspace()` — each task gets an isolated folder with only the data it needs; `reviewDesign()` — layouts are checked in Chrome for overlapping text and sent back to the agent once if broken |
+| [`server/employees.js`](server/employees.js) | The team: model, effort, turn limit, budget cap and tool whitelist per agent |
+| [`server/anonymize.js`](server/anonymize.js) | WhatsApp chats and lead tables anonymised before an agent sees them; fails closed on unknown chat formats; raw file deleted. Tests: [`test/anonymize.test.js`](test/anonymize.test.js) |
+| [`server/learning.js`](server/learning.js) | Owner corrections become per-agent rules via a cheap extra run |
+| [`server/facts.js`](server/facts.js) | Anti-hallucination check without an LLM: every number in a public post must exist in the material the agent was given |
+| [`server/sources.js`](server/sources.js) | Freshness of every data source; one alert after 3 hours of failure, one "recovered" message |
+| [`server/sales-rules.js`](server/sales-rules.js), [`server/ads-rules.js`](server/ads-rules.js) | One definition of a sale and of a complete ad-reporting day, shared by every screen and report |
+| [`server/motion.js`](server/motion.js), [`server/render.js`](server/render.js) | HTML layout → PNG/PDF and → 15-second video: headless Chrome over the DevTools pipe (no Puppeteer), frame-exact capture, ffmpeg, last frame verified against the approved image |
+| [`server/store.js`](server/store.js), [`server/cleanup.js`](server/cleanup.js) | Crash-safe state (tmp + rename, backups, broken files set aside) and retention of client data |
+| [`tools/auto-update.sh`](tools/auto-update.sh), [`tools/watchdog.sh`](tools/watchdog.sh) | Self-update from GitHub with syntax check, wait-for-idle and automatic rollback; restart watchdog |
+| [`portal/`](portal/) | The production portal front end (vanilla JS, no framework) |
+| [`demo/`](demo/) | Demo server and made-up data |
 
-Not included, on purpose: the server modules that talk to the company's ad account, CRM and sales system, the agents' role prompts and knowledge base, configuration and deployment details.
+```bash
+node --test          # anonymisation tests
+node demo/server.js --all
+```
+
+Prompts, UI texts and comments for the owner are in Russian — the office works for a Russian-speaking team. Not included, on purpose: integrations with the company's systems, the agents' role prompts and knowledge base, configuration and deployment details. The full private repository (100+ commits, Sep–Nov 2026) can be shown on request.
 
 ---
 
 ## Timeline & stack
 
-Built solo from September to November 2026 with Claude Code, iterating with the business owner every day; in daily production use since October 2026.
+Built solo from September to November 2026; in daily production use since October 2026.
+
+### How it was built
+I'm a marketer, not a trained software engineer. The whole system was built by pairing with **Claude Code**: a `CLAUDE.md` acts as the project's long-term memory (rules, architecture map, what's in progress, decisions and why), detailed docs live in `docs/` and are updated by Claude at the end of every change, and a weekly scheduled task audits the notes. Claude Code is also the runtime: every AI employee is a `claude -p` process, so the same tool builds the office and works in it.
 
 **Stack:** Node.js 22 (ESM, no dependencies) · Claude Code CLI (Sonnet / Haiku / Opus per task) · Telegram Bot API · Meta Marketing & Instagram Graph APIs · headless Chrome (DevTools protocol) · ffmpeg · Ubuntu 24.04 + systemd + Caddy · Next.js/Supabase sales-chart portal as a data source.
 

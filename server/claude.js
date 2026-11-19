@@ -3,8 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import readline from 'node:readline'
 import { spawn, execFileSync } from 'node:child_process'
-// In the full project P.data comes from paths.js; standalone it falls back to ./data
-const P = { data: path.resolve('data') }
+import { P } from './paths.js'
 
 const IS_WIN = process.platform === 'win32'
 
