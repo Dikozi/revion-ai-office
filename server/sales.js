@@ -1,10 +1,14 @@
-// Anonymisation of client exports (WhatsApp chats, CRM/lead tables) before any AI employee sees them.
-// Extracted from the production module that prepares data for the sales and revenue analysts.
+// Data for the sales analyst (Ерлан) and the revenue analyst (Нурлан), prepared by plain code
+// before the run: chessboard and sales pace from the portal, Meta ads by campaign, Krisha spend,
+// and the owner's exports (Krisha leads, WhatsApp chats) with names and phone numbers cut out.
 // Raw exports are deleted from the task folder, so personal data never reaches Claude.
 import fs from 'node:fs'
 import path from 'node:path'
 import zlib from 'node:zlib'
 import { P } from './paths.js'
+import { moneyEvents, received, planned, deals, unfilled, extraIncome, shortPaid } from './payments.js'
+import { readLog, soldDays, salesIn, kzDay, kzStamp } from './sales-rules.js'
+import { excluded } from './ads-rules.js'
 
 const ymd = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Almaty' }).format(d)
 const daysAgo = (n) => ymd(new Date(Date.now() - n * 864e5))
@@ -93,7 +97,7 @@ export function scrub(text) {
 }
 
 // whole-word names in any grammatical form: «Ержан», «Ержану», «Ержаном»
-const BRAND = /^(менеджер|отдел|продажи?|жк|клиент)$/i
+const BRAND = /^(altyn|qala|менеджер|отдел|продажи?|жк|клиент)$/i
 const escapeRe = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, (c) => '\\' + c)
 export function nameMatcher(names) {
   const words = names.flatMap((n) => String(n).split(/[\s,.;]+/)).filter((w) => /^\p{L}{3,}$/u.test(w) && !BRAND.test(w))
@@ -190,3 +194,100 @@ export function cleanExports(materialsDir, outDir, { keepOther = false } = {}) {
   return done
 }
 
+// ---------- portal, ads, Krisha spend ----------
+
+async function chessboard(portal, dir) {
+  const a = await portal.get('/api/analytics/apartments')
+  const h = await portal.get('/api/analytics/status-history')
+  const flats = a.apartments.map((x) => ({ номер: x.number, подъезд: x.entrance, этаж: x.floor, комнат: x.rooms, площадь: x.area_m2, цена: x.price_kzt, цена_м2: x.price_per_m2_kzt, статус: x.status, статус_с: kzDay(x.status_changed_at) }))
+  const count = (list, key) => list.reduce((o, x) => ((o[x[key]] = (o[x[key]] || 0) + 1), o), {})
+  const byNum = new Map(a.apartments.map((x) => [x.number, x]))
+  // one sales rule with the portal (sales-rules.js): Almaty days, net of cancellations, client moves left out
+  const log = readLog(h.changes)
+  const soldAt = soldDays(log)
+  const pf = a.apartments.map((x) => ({ n: x.number, r: x.rooms, m2: x.area_m2, price: x.price_kzt, st: x.status, since: kzDay(x.status_changed_at), soldAt: soldAt.get(x.number) }))
+  const pay = (await portal.get('/api/analytics/payments').catch(() => null))?.flats || null
+  const ev = moneyEvents(pf, pay)
+  const price = (c) => byNum.get(c.number)?.price_kzt || 0
+  // week-by-week pace for the last 8 weeks (weeks end today)
+  const weeks = []
+  for (let w = 7; w >= 0; w--) {
+    const from = daysAgo((w + 1) * 7), to = daysAgo(w * 7)
+    const x = salesIn(log, from, to)
+    weeks.push({
+      неделя: `${from} — ${to}`,
+      новых_броней: x.bookings,
+      снято_броней: x.unbooked,
+      продаж: x.net,
+      ...(x.cancels.length ? { из_них_отмены_прежних_продаж: x.cancels.length } : {}),
+      сумма_договоров: x.deals.reduce((t, c) => t + price(c), 0) - x.cancels.reduce((t, c) => t + price(c), 0),
+      ...(({ revenue, booking, first, installment, full }) => ({ выручка_получено_денег: revenue, из_них_брони: booking, первые_взносы: first, платежи_рассрочки: installment, полные_оплаты: full }))(received(ev, from, to)),
+      продано_без_цены: x.deals.filter((c) => !price(c)).length,
+    })
+  }
+  const free = a.apartments.filter((x) => x.status === 'Свободна')
+  const sold = a.apartments.filter((x) => x.sold)
+  const now = Date.now()
+  const summary = {
+    жк: [...new Set(a.apartments.map((x) => `${x.complex}, ${x.phase} очередь`))],
+    всего: a.count,
+    по_статусам: count(a.apartments, 'status'),
+    свободно_по_комнатам: count(free, 'rooms'),
+    продано_по_комнатам: count(sold, 'rooms'),
+    продано_площадь: Math.round(sold.reduce((s, x) => s + (x.area_m2 || 0), 0)),
+    свободно_площадь: Math.round(free.reduce((s, x) => s + (x.area_m2 || 0), 0)),
+    цены_внесены: `${a.apartments.filter((x) => x.price_kzt).length} из ${a.count}`,
+    брони_дольше_7_дней: a.apartments.filter((x) => x.status === 'Бронь' && x.status_changed_at && now - Date.parse(x.status_changed_at) > 7 * 864e5).map((x) => x.number),
+    журнал_с: kzDay(a.history_since),
+  }
+  fs.writeFileSync(path.join(dir, 'шахматка.json'), JSON.stringify({ summary, квартиры: flats }, null, 1), 'utf8')
+  const today = ymd(new Date())
+  fs.writeFileSync(path.join(dir, 'оплаты.json'), JSON.stringify({
+    правило: 'Выручка = деньги, реально полученные (по данным шахматки): брони, первые взносы, платежи по рассрочке, полные оплаты. Цена квартиры — это сумма договора, а не выручка. «Продана» без внесённых оплат считается полной оплатой в день продажи. Деньги вне шахматки (другая очередь) в выручку, сравнения и цели не входят — только отдельной строкой.',
+    ...(pay ? {} : { внимание: 'Шахматка не ответила (оплаты) — выручка посчитана по ценам квартир «Продана» на день продажи, а не по полученным деньгам: она может быть завышена (частично оплаченные считаются целиком), а брони и рассрочки в неё не вошли. Это сбой связи, а не ошибка владельца: не пиши, что оплаты не внесены.' }),
+    не_внесены_оплаты: unfilled(pf, pay).map((x) => x.n),
+    продана_не_доплачено: shortPaid(pf, pay).map((x) => ({ квартира: x.n, цена: x.price, получено: x.paid, ожидается_по_графику: x.planned, не_доплачено: x.short })),
+    вне_шахматки_не_в_выручке: extraIncome().map((x) => ({ дата: x.date, сумма: x.amount, что: x.label || '' })),
+    ожидается_по_графику_30_дней: planned(ev, today, daysAgo(-30)), ожидается_всего: planned(ev, today, '9999-12-31'),
+    сделки: deals(pf, pay).map((x) => ({ квартира: x.n, статус: x.st, цена: x.price, получено: x.paid, ожидается_по_графику: x.planned, просрочка: x.overdue, просрочка_с: x.overdueSince, следующий_платёж: x.next, оплаты_внесены: x.filled, полная_оплата_по_цене_автоматически: x.auto, ...(x.short ? { продана_не_доплачено: x.short } : {}) })),
+  }, null, 1), 'utf8')
+  fs.writeFileSync(path.join(dir, 'продажи.json'), JSON.stringify({ по_неделям: weeks, правило: 'Продажа = переход в «Продана»/«Рассрочка» из другого статуса; продажи недели — за вычетом отмен; перенос клиента в другую квартиру — не продажа и не снятая бронь. Время — Астана.', смены_статусов: log.map((c) => ({ номер: c.number, было: c.from, стало: c.to, когда: kzStamp(c.changed_at), ...(c.move ? { перенос_клиента: c.move === 'in' ? `из кв. ${c.movedFrom}` : `в кв. ${c.movedTo}` } : {}) })) }, null, 1), 'utf8')
+  const last4 = weeks.slice(-4)
+  return { flats: a.count, free: free.length, sales4w: last4.reduce((s, w) => s + w.продаж, 0), bookings4w: last4.reduce((s, w) => s + w.новых_броней, 0), noPrice: a.count - a.apartments.filter((x) => x.price_kzt).length }
+}
+
+const ACT = (acts, type) => Number((acts || []).find((x) => x.action_type === type)?.value || 0)
+const results = (acts) => ACT(acts, 'onsite_conversion.messaging_conversation_started_7d') + Math.max(ACT(acts, 'lead'), ACT(acts, 'onsite_conversion.lead_grouped'))
+
+async function ads(meta, dir) {
+  const act = `act_${String(meta.m.adAccountId).replace(/^act_/, '')}`
+  const range = (days) => JSON.stringify({ since: daysAgo(days), until: ymd(new Date()) })
+  const rows = async (level, days) => ((await meta.api(`${act}/insights`, { level, fields: `${level}_name,${level === 'ad' ? 'campaign_name,' : ''}spend,impressions,inline_link_clicks,ctr,actions`, time_range: range(days), limit: 300 })).data || [])
+    .filter((r) => !excluded(meta.cfg)(r.campaign_name || r[`${level}_name`])) // another project in the same ad account (ads-rules.js)
+    .map((r) => ({ название: r[`${level}_name`], ...(r.campaign_name && level === 'ad' ? { кампания: r.campaign_name } : {}), расход: +r.spend || 0, показы: +r.impressions || 0, переходы: +r.inline_link_clicks || 0, ctr: +(+r.ctr || 0).toFixed(2), переписки_и_заявки: results(r.actions) }))
+    .sort((a, b) => b.расход - a.расход)
+  const data = { валюта: meta.m.adAccounts?.find((a) => String(a.id || '').includes(String(meta.m.adAccountId).replace(/^act_/, '')))?.currency || 'USD', кампании_30_дней: await rows('campaign', 30), кампании_90_дней: await rows('campaign', 90), объявления_30_дней: await rows('ad', 30) }
+  fs.writeFileSync(path.join(dir, 'реклама.json'), JSON.stringify(data, null, 1), 'utf8')
+  const c = data.кампании_30_дней
+  return { currency: data.валюта, spend30: +c.reduce((s, x) => s + x.расход, 0).toFixed(2), results30: c.reduce((s, x) => s + x.переписки_и_заявки, 0) }
+}
+
+function krisha(dir) {
+  let entries = []
+  try { entries = JSON.parse(fs.readFileSync(path.join(P.data, 'initiative.json'), 'utf8')).krisha?.entries || [] } catch {}
+  fs.writeFileSync(path.join(dir, 'крыша-расход.json'), JSON.stringify({ записи: entries.map((e) => ({ дата: e.at, сумма_тенге: e.amount })) }, null, 1), 'utf8')
+  return entries.length
+}
+
+export async function collectSales({ portal, meta, dir, materialsDir, withAds }) {
+  fs.mkdirSync(dir, { recursive: true })
+  const stats = { notes: [] }
+  try { stats.board = await chessboard(portal, dir) } catch (e) { stats.notes.push(`шахматка: ${e.message}`) }
+  if (withAds && meta?.m?.token && meta.m.adAccountId) {
+    try { stats.ads = await ads(meta, dir) } catch (e) { stats.notes.push(`реклама Meta: ${e.message}`) }
+  }
+  stats.krisha = krisha(dir)
+  stats.exports = cleanExports(materialsDir, path.join(dir, 'клиенты'))
+  if (!stats.board) throw new Error(stats.notes.join(' '))
+  return stats
+}

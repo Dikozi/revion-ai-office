@@ -120,7 +120,7 @@ async function render() {
   root.innerHTML = `<div class="app">
     <aside class="side">
       ${brand('sd')}
-      <div class="company"><span class="company-mark">${ME.demo ? esc([...ME.demo.company.trim()][0] || 'R') : 'R'}</span><div><b>${ME.demo ? esc(ME.demo.company.split(' · ')[0]) : 'REVION'}</b><span>${ME.demo ? 'демо-версия' : 'бизнес'}</span></div></div>
+      <div class="company"><span class="company-mark">${ME.demo ? esc([...ME.demo.company.trim()][0] || 'R') : 'Altyn Qala'}</span><div><b>${ME.demo ? esc(ME.demo.company.split(' · ')[0]) : 'Altyn Qala'}</b><span>${ME.demo ? 'демо-версия' : 'строительная компания'}</span></div></div>
       <nav class="nav">${nav}</nav>
       <nav class="nav nav-system">${pages.filter((x) => x.system).map((x) => `<a href="#/${x.id}" class="${x.id === p.id ? 'on' : ''}">${icon(x.icon)}<span>${x.title}</span></a>`).join('')}</nav>
       <div class="side-foot">
@@ -1500,7 +1500,7 @@ async function accessPage(el) {
       </tbody></table></div>
       <p class="small muted">«Руководство» видит всё, но ничего не меняет. «Менеджер продаж» видит только продажи, шахматку и отчёты Ерлана.</p></div>
       <form class="card" id="invite"><div class="card-head"><h2>${icon('person_add')} Пригласить</h2></div>
-        <label class="small muted" for="invName">Имя</label><input id="invName" name="name" required maxlength="40" placeholder="Например: Анна" style="width:100%;margin:4px 0 12px">
+        <label class="small muted" for="invName">Имя</label><input id="invName" name="name" required maxlength="40" placeholder="Например: Асель" style="width:100%;margin:4px 0 12px">
         <label class="small muted" for="invRole">Роль</label><select id="invRole" name="role" style="width:100%;margin:4px 0 16px">${roleOpts('sales')}</select>
         <button class="btn btn-primary" style="width:100%">Создать приглашение</button>
         <div id="invOut"></div></form>

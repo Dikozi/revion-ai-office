@@ -16,7 +16,7 @@ const ME = {
   user: { id: 0, name: 'Гость', role: 'owner', roleName: 'Демо-доступ' },
   bot: null,
   publicUrl: '',
-  demo: { company: 'Салон мебели «Уют» · демо', pages: ALL ? ['overview', 'plan', 'marketing', 'sales', 'revenue', 'smm', 'reports'] : ['overview', 'marketing', 'sales', 'revenue', 'reports'] },
+  demo: { company: 'Altyn Qala Group · демо', pages: ALL ? ['overview', 'plan', 'marketing', 'sales', 'revenue', 'smm', 'reports'] : ['overview', 'marketing', 'sales', 'revenue', 'reports'] },
 }
 
 // only the portal page and the team pictures are served; nothing else in the project is reachable

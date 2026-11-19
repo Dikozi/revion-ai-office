@@ -1,10 +1,10 @@
 # REVION — an AI office that runs a sales & marketing department
 
-REVION is a "virtual office" of six AI employees built on **Claude Code**. It runs 24/7 on a small cloud server and does the analytical and content work for a residential real-estate developer in Astana, Kazakhstan: it reads ad performance, the apartment sales chart, CRM leads and Instagram stats, writes weekly and monthly reports, proposes actions, and produces and publishes the company's Instagram content.
+REVION is a "virtual office" of six AI employees built on **Claude Code**. It runs 24/7 on a small cloud server and does the analytical and content work for a residential real-estate developer in Kazakhstan: it reads ad performance, the apartment sales chart, CRM leads and Instagram stats, writes weekly and monthly reports, proposes actions, and produces and publishes the company's Instagram content.
 
 The owner talks to it like to a team lead: send a task in Telegram → the manager agent returns a structured plan → the owner taps **Approve** → specialist agents do the work and send back files, images, videos and reports.
 
-> **This repository is a public showcase.** The production system runs on company data, so its full source, configuration and data stay private. What's here: the architecture, the key engineering decisions, the agent runner, and the **web portal running on made-up demo data** (a furniture store — nothing from the real company), which you can start locally with one command.
+> **This is the full source of the production system.** Only things that identify the real company and people were replaced: the company and project names are now the fictional **Altyn Qala Group**, server address, phone numbers, account IDs, an employee's name and the company's prices are placeholders. All integrations (Claude Code, Telegram, Meta Ads, Instagram publishing, CRM, sales-chart API) are the real code. Company data, tokens and the knowledge base were never in git (`data/`, `knowledge/` are ignored). The web portal also runs on **made-up demo data** for a fictional residential developer with one command — see below.
 
 ![Overview](screenshots/overview.png)
 
@@ -94,8 +94,8 @@ One-page app: **10 seconds** to see the state of the business, **1 minute** to s
 
 | | |
 |---|---|
-| ![Signal panel](screenshots/signal-panel.png) | ![Sales](screenshots/sales.png) |
-| ![Marketing](screenshots/marketing.png) | ![Revenue](screenshots/revenue.png) |
+| ![Signal panel](screenshots/signal-panel.png) | ![Revenue](screenshots/revenue.png) |
+| ![Sales chart](screenshots/chessboard.png) | ![Marketing](screenshots/marketing.png) |
 
 Login is passwordless via the Telegram bot, with roles (owner / leadership read-only / sales manager) and one-time invite links. Light and dark themes, works on phones.
 
@@ -110,36 +110,38 @@ node demo/server.js --all
 # open http://127.0.0.1:3791
 ```
 
-The demo serves the real portal front end with made-up data for a fictional furniture store. Buttons only explain what would happen; nothing is sent anywhere.
+The demo serves the real portal front end with made-up data for a fictional residential developer — a 88-flat building with a sales chart, installments, ads and CRM funnel. Buttons only explain what would happen; nothing is sent anywhere.
 
 ---
 
 ## Code tour
 
-These are production modules, copied as-is except for company names and server paths. They import each other like in the real project; integrations with the company's ad account, CRM and sales system are not included, so the server itself doesn't start from this repo — read it, run the tests, run the demo.
-
 | File | Look at |
 |---|---|
 | [`server/claude.js`](server/claude.js) | How an AI employee is launched: the economical flag set, a shared concurrency limiter for every kind of run, orphan-process cleanup after a crash, stream-JSON parsing, human-readable failure reasons |
 | [`server/office.js`](server/office.js) | The dispatcher. `runPlan()` — manager plan with a JSON schema whose `employee` enum is built from active agents; `prepareWorkspace()` — each task gets an isolated folder with only the data it needs; `reviewDesign()` — layouts are checked in Chrome for overlapping text and sent back to the agent once if broken |
-| [`server/employees.js`](server/employees.js) | The team: model, effort, turn limit, budget cap and tool whitelist per agent |
-| [`server/anonymize.js`](server/anonymize.js) | WhatsApp chats and lead tables anonymised before an agent sees them; fails closed on unknown chat formats; raw file deleted. Tests: [`test/anonymize.test.js`](test/anonymize.test.js) |
-| [`server/learning.js`](server/learning.js) | Owner corrections become per-agent rules via a cheap extra run |
-| [`server/facts.js`](server/facts.js) | Anti-hallucination check without an LLM: every number in a public post must exist in the material the agent was given |
-| [`server/sources.js`](server/sources.js) | Freshness of every data source; one alert after 3 hours of failure, one "recovered" message |
-| [`server/sales-rules.js`](server/sales-rules.js), [`server/ads-rules.js`](server/ads-rules.js) | One definition of a sale and of a complete ad-reporting day, shared by every screen and report |
-| [`server/motion.js`](server/motion.js), [`server/render.js`](server/render.js) | HTML layout → PNG/PDF and → 15-second video: headless Chrome over the DevTools pipe (no Puppeteer), frame-exact capture, ffmpeg, last frame verified against the approved image |
-| [`server/store.js`](server/store.js), [`server/cleanup.js`](server/cleanup.js) | Crash-safe state (tmp + rename, backups, broken files set aside) and retention of client data |
+| [`server/employees.js`](server/employees.js), [`employees/`](employees/) | The team: model, effort, turn limit, budget cap and tool whitelist per agent, and each agent's role prompt |
+| [`server/initiative.js`](server/initiative.js) | Watchdogs, Monday reports, weekly plan, monthly goals, the "did it work after 7 days" loop, business memory |
+| [`server/reports.js`](server/reports.js), [`server/months.js`](server/months.js), [`server/charts.js`](server/charts.js) | Weekly / monthly reports: numbers and SVG charts computed by code, one cheap model run writes the words; PDF + Excel |
+| [`server/sales.js`](server/sales.js) | WhatsApp chats and lead tables anonymised before an agent sees them; fails closed on unknown chat formats; raw file deleted. Tests: [`test/anonymize.test.js`](test/anonymize.test.js) |
+| [`server/crm.js`](server/crm.js) | Read-only CRM sync: incremental + nightly full pulls, refuses to overwrite a good copy with a suspicious one, spam/attack lead filter, refusal notes anonymised in memory and never written to disk |
+| [`server/meta.js`](server/meta.js), [`server/ads-archive.js`](server/ads-archive.js), [`server/ads-rules.js`](server/ads-rules.js) | Meta Marketing / Instagram Graph API, a nightly archive of every ad, forecasts checked against reality |
+| [`server/smm-pack.js`](server/smm-pack.js), [`server/motion.js`](server/motion.js), [`server/render.js`](server/render.js) | Weekly content package with one approval, auto-publishing through the official Instagram API; HTML layout → PNG/PDF/15-second video via headless Chrome over the DevTools pipe (no Puppeteer) and ffmpeg, last frame verified against the approved image |
+| [`server/learning.js`](server/learning.js), [`server/facts.js`](server/facts.js) | Owner corrections become per-agent rules; every number in a public post must exist in the material the agent was given |
+| [`server/sources.js`](server/sources.js), [`server/sales-rules.js`](server/sales-rules.js) | Freshness of every data source; one shared definition of a sale |
+| [`server/telegram.js`](server/telegram.js), [`server/auth.js`](server/auth.js) | Telegram bot (tasks, approvals, files, outbox for network failures) and passwordless portal login through the bot |
 | [`tools/auto-update.sh`](tools/auto-update.sh), [`tools/watchdog.sh`](tools/watchdog.sh) | Self-update from GitHub with syntax check, wait-for-idle and automatic rollback; restart watchdog |
-| [`portal/`](portal/) | The production portal front end (vanilla JS, no framework) |
-| [`demo/`](demo/) | Demo server and made-up data |
+| [`portal/`](portal/), [`web/`](web/) | The portal (vanilla JS) and the live pixel office |
+| [`CLAUDE.md`](CLAUDE.md), [`docs/`](docs/) | The project memory Claude Code works from: rules, architecture, decisions, what is in progress (in Russian) |
 
 ```bash
-node --test          # anonymisation tests
-node demo/server.js --all
+node --test                 # anonymisation tests
+node demo/server.js --all   # portal on demo data → http://127.0.0.1:3791
 ```
 
-Prompts, UI texts and comments for the owner are in Russian — the office works for a Russian-speaking team. Not included, on purpose: integrations with the company's systems, the agents' role prompts and knowledge base, configuration and deployment details. The full private repository (100+ commits, Sep–Nov 2026) can be shown on request.
+To run the office itself you need Claude Code logged in, your own Telegram bot token and, optionally, Meta / CRM / sales-chart credentials — entered in the office settings (⚙), stored in `data/config.json`, never in git. Step-by-step setup (Russian): [`docs/установка.md`](docs/установка.md).
+
+Prompts, UI texts and docs are in Russian — the office works for a Russian-speaking team. Development history (100+ commits, Sep–Nov 2026) lives in the private original; this public copy starts from a single commit because older commits contain company data.
 
 ---
 

@@ -464,7 +464,7 @@ export class Office extends EventEmitter {
       lines.push('', `Свежие данные — в папке _данные (сегодня ${today()}):`)
       if (fs.existsSync(path.join(P.work, task.id, '_данные', 'история-продаж.md'))) lines.push('- _данные/история-продаж.md — вся история: продажи и брони по месяцам, путь брони (сколько доходят до продажи и за сколько дней), продажи по комнатности, остатки и изменения цен по ночным снимкам офиса')
       if (b) lines.push(`- _данные/шахматка.json — ${b.flats} квартир, свободно ${b.free}; цены не внесены у ${b.noPrice}`, `- _данные/продажи.json — по неделям за 8 недель (за последние 4: продаж ${b.sales4w}, новых броней ${b.bookings4w}) и все смены статусов`)
-      if (sales.ads) lines.push(`- _данные/реклама.json — кампании за 30 и 90 дней и объявления за 30 дней: за 30 дней расход ${sales.ads.spend30} ${sales.ads.currency}, переписок и заявок ${sales.ads.results30}`)
+      if (sales.ads) lines.push(`- _данные/реклама.json — кампании за 30 и 90 дней и объявления за 30 дней (без парк-проекта): за 30 дней расход ${sales.ads.spend30} ${sales.ads.currency}, переписок и заявок ${sales.ads.results30}`)
       lines.push(`- _данные/крыша-расход.json — расход на Крышу, записей: ${sales.krisha}`)
       const ex = sales.exports.filter((x) => x.kind !== 'ошибка')
       if (ex.length) lines.push(`- _данные/клиенты/ — выгрузки владельца без имён и телефонов: ${ex.map((x) => `${x.file} (${x.kind}${x.messages ? `, сообщений ${x.messages}` : ''}${x.rows != null ? `, строк ${x.rows}` : ''})`).join('; ')}`)

@@ -1,0 +1,31 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "office",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "server/main.js",
+        "--no-browser"
+      ],
+      "port": 3777
+    },
+    {
+      "name": "revion-demo",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "demo/server.js"
+      ],
+      "port": 3790
+    },
+    {
+      "name": "revion-demo-all",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "demo/server.js",
+        "--all"
+      ],
+      "port": 3791
+    }
+  ]
+}

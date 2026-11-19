@@ -1,0 +1,13 @@
+{
+  "name": "virtual-office",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Виртуальный офис агентов Claude Code",
+  "scripts": {
+    "start": "node server/main.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

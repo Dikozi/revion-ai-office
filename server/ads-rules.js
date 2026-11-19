@@ -5,7 +5,7 @@
 
 export const DEFAULT_TZ = 'Asia/Almaty'
 // another project in the same ad account; the owner can change the list in data/config.json → meta.exclude
-export const DEFAULT_EXCLUDE = [] // campaign names of other projects to leave out of the numbers
+export const DEFAULT_EXCLUDE = ['парк', 'park']
 
 // (name) => true when the campaign belongs to an excluded project
 export function excluded(cfg) {

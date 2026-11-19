@@ -4,11 +4,11 @@
 # Runs as root from ai-office-update.timer; git runs as the office user.
 set -u
 main() {
-DIR=/opt/office/app
+DIR=/home/office/office
 BRANCH=claude/project-overview-kibk75
 SVC=ai-office
 CG=/sys/fs/cgroup/system.slice/$SVC.service/cgroup.procs
-G() { HOME=/opt/office setpriv --reuid=office --regid=office --init-groups git -C "$DIR" "$@"; }
+G() { HOME=/home/office setpriv --reuid=office --regid=office --init-groups git -C "$DIR" "$@"; }
 
 exec 9>/run/ai-office-update.lock
 flock -n 9 || exit 0

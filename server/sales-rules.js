@@ -2,20 +2,20 @@
 // - A day is an Asia/Almaty day (UTC+5, no DST): the chessboard log sends UTC timestamps.
 // - A sale = a flat entering «Продана»/«Рассрочка» from another status; «Рассрочка» → «Продана» is the same deal.
 // - A cancellation = leaving them for another status; sales in a period are net of cancellations.
-// - A client moved to another flat (sales-chart portal move-actions: the new flat takes the deal status, the old one
+// - A client moved to another flat (sales-portal move-actions: the new flat takes the deal status, the old one
 //   becomes «Свободна» seconds later) is neither a new sale/booking nor a cancellation.
 // - The sale date of a flat = the day its current deal entered the sold statuses (a move keeps the old date;
 //   a move from a flat sold before the log leaves the date unknown: null).
 // - A cancellation of a deal whose sale is not in the log (sold before it, incl. a later «Рассрочка» ↔ «Продана»
 //   or a client moved in from such a flat) is not taken from sales: its +1 is in no period either (`preLog`);
 //   stock counts still see it.
-// - The base price per m²: config `basePpm`, 400 000 ₸ by default. Cheaper sales are listed, never alarmed.
+// - The base price per m²: config `basePpm`, 350 000 ₸ by default. Cheaper sales are listed, never alarmed.
 export const SOLD = ['Продана', 'Рассрочка']
 export const DEAL = ['Бронь', 'Рассрочка', 'Продана']
 // a move is one server action (claim, then release, seconds apart): a pair only when it is the single one within a minute
 const MOVE_GAP = 60e3
 
-export const basePpm = (cfg) => Number(cfg?.basePpm) > 0 ? Number(cfg.basePpm) : 400000
+export const basePpm = (cfg) => Number(cfg?.basePpm) > 0 ? Number(cfg.basePpm) : 350000
 
 // a full timestamp → its Almaty day; a bare date (no time) is taken as it is
 export function kzDay(iso) {

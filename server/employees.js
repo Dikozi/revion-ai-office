@@ -20,7 +20,7 @@ const ROSTER = [
     id: 'smm',
     name: 'Мадина',
     title: 'SMM',
-    about: 'Посты, сторис, контент-план, УТП и готовые картинки в фирменном стиле компании',
+    about: 'Посты, сторис, контент-план, УТП и готовые картинки в стиле Altyn Qala',
     look: { shirt: '#c2566b', hair: '#6b3f22', skin: '#f0c7a0', accessory: 'phone' },
     active: true,
     model: 'sonnet',

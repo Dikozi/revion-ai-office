@@ -1,3 +1,14 @@
 node_modules/
 data/
+work/
+inbox/*
+!inbox/.gitkeep
+knowledge/*
+!knowledge/README.md
+Примеры монтажа/
 .DS_Store
+Thumbs.db
+*.log
+Ролик/
+*.lnk
+Монтажи/

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Офис</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Crect x='1' y='9' width='14' height='3' fill='%23a57a4c'/%3E%3Crect x='3' y='12' width='2' height='3' fill='%236e5034'/%3E%3Crect x='11' y='12' width='2' height='3' fill='%236e5034'/%3E%3Crect x='5' y='2' width='6' height='5' fill='%23e8b98f'/%3E%3Crect x='5' y='1' width='6' height='2' fill='%232a1c14'/%3E%3Crect x='4' y='7' width='8' height='2' fill='%2334466b'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand" title="Виртуальный офис">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>Офис</span>
+    </div>
+
+    <form id="ask" class="ask" autocomplete="off">
+      <label class="sr-only" for="askText">Поручение руководителю</label>
+      <textarea id="askText" rows="1" placeholder="Поручение руководителю… например: «Сделай пост про ход строительства по этим фото»"></textarea>
+      <div id="askChips" class="chips"></div>
+      <div class="ask-actions">
+        <label class="btn btn-ghost" title="Приложить фото или файлы">
+          <input id="askFiles" type="file" multiple hidden>
+          <span aria-hidden="true">📎</span><span class="hide-sm">Файлы</span>
+        </label>
+        <button class="btn btn-primary" type="submit">Отправить</button>
+      </div>
+    </form>
+
+    <div class="limits" id="limits">
+      <div class="limit" id="limit5" title="Лимит подписки на 5 часов">
+        <span class="limit-label">5 ч</span>
+        <span class="bar"><i></i></span>
+        <span class="limit-val">—</span>
+      </div>
+      <div class="limit" id="limit7" title="Недельный лимит подписки">
+        <span class="limit-label">Неделя</span>
+        <span class="bar"><i></i></span>
+        <span class="limit-val">—</span>
+      </div>
+    </div>
+
+    <span id="conn" class="conn" hidden>Нет связи с офисом…</span>
+    <button id="settingsBtn" class="btn btn-icon" type="button" title="Настройки" aria-label="Настройки">⚙</button>
+  </header>
+
+  <main class="main">
+    <section class="stage-col">
+      <div id="plans" class="plans" aria-live="polite"></div>
+      <div id="stage" class="stage">
+        <canvas id="scene" aria-label="Офис: сотрудники за столами"></canvas>
+        <div id="overlay" class="overlay"></div>
+      </div>
+    </section>
+    <aside id="side" class="side"></aside>
+  </main>
+
+  <div id="drawer" class="drawer" hidden>
+    <div class="drawer-backdrop" data-close></div>
+    <article class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+      <header class="drawer-head">
+        <div>
+          <div id="drawerMeta" class="muted small"></div>
+          <h2 id="drawerTitle"></h2>
+        </div>
+        <button class="btn btn-icon" type="button" data-close aria-label="Закрыть">✕</button>
+      </header>
+      <div id="drawerBody" class="drawer-body"></div>
+    </article>
+  </div>
+
+  <dialog id="settings" class="settings">
+    <form method="dialog" class="settings-head">
+      <h2>Настройки</h2>
+      <button class="btn btn-icon" aria-label="Закрыть">✕</button>
+    </form>
+    <div id="settingsBody"></div>
+  </dialog>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

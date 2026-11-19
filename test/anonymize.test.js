@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { scrub, cleanExports } from '../server/anonymize.js'
+import { scrub, cleanExports } from '../server/sales.js'
 
 test('scrub removes phones, emails and national IDs', () => {
   const out = scrub('Звоните +7 (701) 123-45-67 или 8 777 555 44 33, почта a.b@mail.kz, ИИН 900101300123')

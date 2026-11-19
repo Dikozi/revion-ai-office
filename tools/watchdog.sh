@@ -2,7 +2,7 @@
 # Runs every 3 minutes (ai-office-watchdog.timer). If the office is down two checks in a row,
 # restarts it and tells the owner in Telegram; tells again when it is back.
 STATE=/var/lib/ai-office-watchdog
-CFG=/opt/office/app/data/config.json
+CFG=/home/office/office/data/config.json
 
 alive() {
   systemctl is-active --quiet ai-office && [ "$(curl -s -m 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:3777/)" != "000" ]
