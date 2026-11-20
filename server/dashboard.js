@@ -2,7 +2,7 @@ import { readPlan, METRICS, AREAS } from './initiative.js'
 import { crmSummary, whoBuys, byAd, crmPulse } from './crm.js'
 import { moneyEvents, received, planned, unfilled, extraIncome, shortPaid } from './payments.js'
 import { SOLD, readLog, soldDays, salesIn, isUnbook, kzDay, kzStamp, basePpm } from './sales-rules.js'
-import { adNumbers, adKinds } from './ads-archive.js'
+import { adNumbers, adKinds, archiveMore } from './ads-archive.js'
 import { dayAgo, lastDays, kindByGoal, kindByResult, isPaid } from './ads-rules.js'
 import { usdKzt } from './fx.js'
 import { mediaResults } from './post-results.js'
@@ -294,8 +294,11 @@ export class Dashboard {
     const currency = account?.currency || this.meta.currency() || 'USD'
     // 8 weekly sums: the small trend lines on the first screen
     const weeks = [...Array(8)].map((_, i) => sum(list.slice(i * 7, i * 7 + 7)))
+    // promotions and followers, who really talks, placements, video — from the night archive (no Meta calls)
+    let more = null
+    try { more = archiveMore(this.initiative?.cfg || this.meta.cfg || {}) } catch (e) { console.error('Портал, архив рекламы:', e.message) }
     return {
-      currency, tz, until: ago(1), days: list.slice(-14), weeks, cur, prev, month, rows, median, problems,
+      currency, tz, until: ago(1), days: list.slice(-14), weeks, cur, prev, month, rows, median, problems, more,
       account: account ? { name: account.name, status: account.status, active: account.active, grace: !!account.grace, reason: account.reason, capReached: account.capReached, cap: account.cap, spent: account.spent, balance: account.balance } : null,
       lastSpend: [...list].reverse().find((x) => x.spend > 0)?.date || null,
     }
@@ -441,7 +444,8 @@ export class Dashboard {
     const today = new Date(Date.now() - 864e5).toISOString().slice(0, 10)
     const earlier = (this.smmPack.state.packs || []).filter((k) => k !== p && k.status === 'approved').flatMap((k) => k.items).filter((x) => x.date >= today && x.status !== 'superseded')
     const res = mediaResults()
-    return { week: p.week, status: p.status, proposal: prop?.status === 'new' ? prop.id : null, items: [...earlier, ...p.items].sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`)).map((x) => ({ date: x.date, time: x.time, type: x.type, manual: x.manual, sticker: x.sticker, status: x.status, caption: x.caption.slice(0, 160), permalink: x.permalink || '', error: x.error || '', video: x.video ? (x.music || 'есть') : '', videoError: x.videoError || '', result: (x.mediaId && res[x.mediaId]) || '' })) }
+    const arg = (a) => (a ? { kind: a.kind, product: a.product || '', usp: a.usp || '', audience: a.audience || '', objection: a.objection || '', why: a.why || '', check: a.check } : null)
+    return { week: p.week, status: p.status, proposal: prop?.status === 'new' ? prop.id : null, strategy: p.strategy || [], check: p.check || '', items: [...earlier, ...p.items].sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`)).map((x) => ({ date: x.date, time: x.time, type: x.type, manual: x.manual, sticker: x.sticker, status: x.status, caption: x.caption.slice(0, 160), permalink: x.permalink || '', error: x.error || '', video: x.video ? (x.music || 'есть') : '', videoError: x.videoError || '', result: (x.mediaId && res[x.mediaId]) || '', arg: arg(x.arg) })) }
   }
 
   // ---------- office side ----------

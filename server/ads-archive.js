@@ -9,15 +9,25 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { P } from './paths.js'
-import { ours, ymdIn, shift, kindByGoal } from './ads-rules.js'
+import { ours, ymdIn, shift, kindByGoal, refusedField, followsOf, visitsOf } from './ads-rules.js'
+import { promos, adPortrait, regionsOf, hoursOf, placesOf, videosOf, otherReach, adsMore, KIND_HOURS } from './ads-more.js'
 
 // a forecast is scored only on at least this many conversations (or live ones): fewer is chance, not skill
 const MIN_SAMPLE = 10
 const DIR = path.join(P.data, 'ads')
 const FILE = path.join(DIR, 'archive.json')
 const FORECASTS = path.join(DIR, 'forecasts.json')
-const FIELDS = 'ad_id,ad_name,campaign_name,spend,impressions,reach,frequency,inline_link_clicks,actions,video_p25_watched_actions,video_p100_watched_actions,video_thruplay_watched_actions,video_avg_time_watched_actions'
-const CUTS = { age: 'age,gender', place: 'publisher_platform,platform_position' }
+const FIELDS = 'ad_id,ad_name,campaign_id,campaign_name,spend,impressions,reach,frequency,inline_link_clicks,actions,video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,video_p100_watched_actions,video_thruplay_watched_actions,video_avg_time_watched_actions'
+// campaigns: reach is asked of Meta per campaign (a sum of ad reaches counts one person many times)
+const CAMP_FIELDS = 'campaign_id,campaign_name,objective,spend,impressions,reach,frequency,inline_link_clicks,actions'
+// Instagram profile visits from ads (Meta's field since Dec 2025); refused → remembered until a restart (meta.tryField)
+const VISITS = 'instagram_profile_visits'
+// a breakdown that may carry follows from ads: tried once per run of the office, kept only while it gives follows
+const FOLLOW_BD = 'instagram_ads_follow_type'
+// cut name → breakdowns and windows; region and hour — 90 days only (who writes now, not two years ago)
+const CUTS = { age: ['age,gender', ['last_90d', 'maximum']], place: ['publisher_platform,platform_position', ['last_90d', 'maximum']], region: ['region', ['last_90d']], hour: [KIND_HOURS, ['last_90d']] }
+// rows kept per cut: the archive stays small even with hourly rows
+const CUT_ROWS = 4000
 const WORDS = { female: 'женщины', male: 'мужчины', unknown: 'неизвестно', Unknown: 'неизвестно', instagram: 'Instagram', facebook: 'Facebook', audience_network: 'Audience Network', messenger: 'Messenger', feed: 'лента', instagram_reels: 'Reels', facebook_reels: 'Reels', instagram_stories: 'сторис', facebook_stories: 'сторис', instagram_explore: 'интересное', instagram_explore_grid_home: 'интересное', instagram_profile_feed: 'профиль', facebook_profile_feed: 'профиль', marketplace: 'маркетплейс', video_feeds: 'видеолента', search: 'поиск' }
 
 const ymd = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Almaty' }).format(d)
@@ -28,9 +38,12 @@ const act = (actions, name) => num((actions || []).find((a) => a.action_type ===
 const read = (f, empty) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')) } catch { return empty } }
 const write = (f, v) => { fs.mkdirSync(DIR, { recursive: true }); fs.writeFileSync(`${f}.tmp`, JSON.stringify(v)); fs.renameSync(`${f}.tmp`, f) }
 
+// video of an ad: 3-second views (video_view), watched to 25/50/75/100%, ThruPlay, average seconds watched
 const videoOf = (r) => {
   const v = (k) => num(r[k]?.[0]?.value)
-  return v('video_p25_watched_actions') ? { p25: v('video_p25_watched_actions'), p100: v('video_p100_watched_actions'), thru: v('video_thruplay_watched_actions'), avg: v('video_avg_time_watched_actions') } : null
+  const v3 = act(r.actions, 'video_view')
+  if (!v('video_p25_watched_actions') && !v3) return null
+  return { v3: v3 || null, p25: v('video_p25_watched_actions'), p50: v('video_p50_watched_actions'), p75: v('video_p75_watched_actions'), p100: v('video_p100_watched_actions'), thru: v('video_thruplay_watched_actions'), avg: v('video_avg_time_watched_actions') }
 }
 
 // conv = all results (conversations + forms), the same sum the dashboard uses.
@@ -46,8 +59,10 @@ export function adNumbers(r = {}) {
     block: act(r.actions, 'onsite_conversion.messaging_block'),
   }
 }
-// [spend, impr, clicks, chats, leads, deep, block]
+// [spend, impr, clicks, chats, leads, deep, block] and, when Meta gives them, [7] Instagram profile visits, [8] follows from
+// the ad; absent (or null) = unknown, never 0. Older readers sum only the first 7.
 const pack = (n) => [n.spend, n.impr, n.clicks, n.chats, n.leads, n.deep, n.block]
+const packMore = (r, vis, fol) => { const p = pack(adNumbers(r)); if (vis || fol) p.push(vis ? visitsOf(r) : null); if (fol) p.push(followsOf(r.actions) ?? 0); return p }
 const ZERO = [0, 0, 0, 0, 0, 0, 0]
 const add = (t, v) => t.map((s, i) => s + (v?.[i] || 0))
 
@@ -70,6 +85,9 @@ export function kindOf(set, total = {}) {
   return total.leads > total.chats ? 'form' : total.chats ? 'chat' : 'other'
 }
 
+// { ad_id: kind } of an archive already read
+export const kindsOf = (a) => Object.fromEntries(Object.entries(a?.ads || {}).map(([id, x]) => [id, kindOf(x.set, x.total)]))
+
 // { ad_id: 'chat' | 'form' | 'other' } from the night archive; re-read only when the file changes
 let kindsCache = { mtime: 0, kinds: {} }
 export function adKinds() {
@@ -81,6 +99,13 @@ export function adKinds() {
     }
     return kindsCache.kinds
   } catch { return {} }
+}
+
+// promotions, live portrait, regions, hours, placements and video of the archive, for the portal (files only, no Meta calls)
+export function archiveMore(cfg = {}) {
+  const a = read(FILE, null)
+  if (!a || a.v !== 2) return null
+  return adsMore(a, kindsOf(a), read(path.join(P.data, 'instagram', 'history.json'), { days: {} }).days || {}, cfg)
 }
 
 // «https://www.instagram.com/p/AbCdEfGhIjK/» → «AbCdEfGhIjK»
@@ -112,6 +137,62 @@ function brief(s) {
   }
 }
 
+// Promotions, who really talks (live conversations, regions, hours), placements and video — for Алия's history file
+function moreSections(a, kinds, history, managerHours, money) {
+  const cur = a.currency
+  const out = []
+  const dd = (d) => (d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '—')
+  const n = (v) => (v == null ? '—' : Math.round(v).toLocaleString('ru-RU'))
+  const p = (v) => (v == null ? '—' : `${v}%`)
+  const SRC = { meta: 'Meta', estimate: 'оценка', clicks: 'оценка по кликам' }
+  const pr = promos(a, kinds, history)
+  if (pr?.rows.length) {
+    const vis = a.probe?.visits
+    out.push('', '## Продвижения: охват, посещения профиля, новые подписчики (за всё время каждой кампании)',
+      `«Продвигать» в Instagram (кампании «Публикация в Instagram: …») и реклама на охват / профиль. Охват — по кампании, как его считает Meta (охваты объявлений не складываются: один человек видел несколько). Посещения профиля — ${vis ? 'Meta считает сама (поле instagram_profile_visits)' : vis === false ? 'Meta это поле не отдала: у рекламы на профиль взяты клики по ссылке — это оценка' : 'появятся после ночного обновления'}. Подписчики: «Meta» — посчитала Meta; «оценка» — посещения профиля × доля «подписались ÷ зашли в профиль» всего аккаунта за те же дни (своя доля у каждой кампании, в скобках). Цену подписчика у рекламы на переписки не считаем.`,
+      `| продвижение | даты | тип | расход ${cur} | охват | показы | в профиль | цена посещения | подписчиков | цена подписчика | источник |`, '|---|---|---|---|---|---|---|---|---|---|---|',
+      ...pr.rows.slice(0, 25).map((x) => `| ${x.title.replace(/\|/g, '/').slice(0, 60)}${x.post ? ` (${x.post})` : ''} | ${dd(x.first)}–${dd(x.last)} | ${KIND[x.kind] || x.kind} | ${money(x.spend)} | ${n(x.reach)} | ${n(x.impr)} | ${n(x.visits)}${x.visitsSrc === 'clicks' ? ' (клики)' : ''} | ${x.cpv == null ? '—' : money(x.cpv)} | ${n(x.follows)} | ${x.cpf == null ? '—' : money(x.cpf)} | ${x.follows == null ? 'нет данных' : `${SRC[x.followsSrc]}${x.share != null ? ` (${String(x.share).replace('.', ',')}%)` : ''}`} |`),
+      ...pr.notes.map((t) => `- ${t}`))
+  }
+  const pt = adPortrait(a, kinds)
+  if (pt?.chats) {
+    out.push('', '## Кто реально разговаривает: возраст и пол, последние 90 дней (реклама на переписки)',
+      `Живой разговор — клиент написал 3+ сообщения. Всего ${pt.chats} переписок, из них живых ${pt.deep} (${p(pt.live)}); «неизвестно» не входит.`,
+      `| кто | переписок | доля переписок | живых | доля живых | живые из переписок | цена переписки | цена живого |`, '|---|---|---|---|---|---|---|---|',
+      ...pt.rows.map((g) => `| ${g.label} | ${g.chats} | ${p(g.shareChats)} | ${g.deep} | ${p(g.shareDeep)} | ${p(g.live)} | ${money(g.cpc)} | ${money(g.cpq)} |`),
+      ...(pt.sex.length ? [`Пол: ${pt.sex.map((g) => `${g.label} — ${p(g.shareChats)} переписок и ${p(g.shareDeep)} живых, живой по ${money(g.cpq)} ${cur}`).join('; ')}.`] : []))
+  }
+  const or = otherReach(a, kinds)
+  if (or?.length) out.push('', '## Реклама на охват / профиль: кому показали (возраст и пол, 90 дней — это не те, кто пишет)', '| кто | показов | доля показов | кликов | расход |', '|---|---|---|---|---|', ...or.slice(0, 8).map((g) => `| ${g.label} | ${n(g.impr)} | ${p(g.share)} | ${g.clicks} | ${money(g.spend)} |`))
+  const rg = regionsOf(a, kinds)
+  if (rg?.chats) {
+    out.push('', '## Откуда пишут: регионы, последние 90 дней (реклама на переписки)',
+      `Астана — ${p(rg.astana.shareChats)} переписок и ${p(rg.astana.shareDeep)} живых (живой по ${money(rg.astana.cpq)} ${cur}); другие регионы — ${p(rg.rest.shareChats)} и ${p(rg.rest.shareDeep)} (живой по ${money(rg.rest.cpq)} ${cur}).`,
+      '| регион | переписок | доля | живых | доля живых | цена переписки | цена живого |', '|---|---|---|---|---|---|---|',
+      ...rg.rows.slice(0, 10).map((g) => `| ${g.label} | ${g.chats} | ${p(g.shareChats)} | ${g.deep} | ${p(g.shareDeep)} | ${money(g.cpc)} | ${money(g.cpq)} |`))
+  }
+  const hr = hoursOf(a, kinds, managerHours, a.tz)
+  if (hr?.chats) {
+    out.push('', '## Когда пишут: часы по времени Астаны, последние 90 дней (реклама на переписки)',
+      hr.known ? `Менеджер работает: ${hr.hours}. Вне этих часов пишут ${p(hr.outside)} переписок (${p(hr.outsideDeep)} живых); с учётом выходных — ≈${p(hr.outsideWeek)} (Meta не делит часы по дням недели, считаем дни похожими).` : 'Часы менеджера не заданы (managerHours) — сравнить не с чем.',
+      `Чаще всего пишут в ${hr.peak.map((h) => `${h}:00–${h + 1}:00`).join(', ') || '—'}.${hr.moved ? ` Часы кабинета сдвинуты на ${hr.moved} ч к времени Астаны.` : ''}`,
+      '| час | переписок | живых | менеджер |', '|---|---|---|---|',
+      ...hr.byHour.filter((x) => x.chats).map((x) => `| ${String(x.h).padStart(2, '0')}:00 | ${x.chats} | ${x.deep} | ${x.work ? 'работает' : 'нет'} |`))
+  }
+  for (const [cut, title] of [['place:last_90d', 'последние 90 дней'], ['place:maximum', 'за всё время']]) {
+    const pl = placesOf(a, kinds, cut)
+    if (pl?.rows.length) out.push('', `## Места показа по группам: лента / Reels / сторис / прочее, ${title} (реклама на переписки)`, `| место | расход ${cur} | переписок | цена переписки | живых | цена живого | живые из переписок |`, '|---|---|---|---|---|---|---|', ...pl.rows.map((g) => `| ${g.label} | ${money(g.spend)} | ${g.chats} | ${money(g.cpc)} | ${g.deep} | ${money(g.cpq)} | ${p(g.live)} |`))
+  }
+  const vd = videosOf(a, kinds, { top: 12 })
+  if (vd?.rows.length) {
+    out.push('', '## Видео в рекламе: цепляет ли начало и досматривают ли (объявления, крутившиеся за 90 дней; итоги за всё время)',
+      'Цепляет — 3-секундные просмотры ÷ показы; досматривают — досмотрели до конца ÷ 3-секундные просмотры.',
+      '| объявление | показов | 3 сек | цепляет | 25% | 50% | 75% | 100% | досматривают | ср. время, с |', '|---|---|---|---|---|---|---|---|---|---|',
+      ...vd.rows.map((v) => `| ${String(v.name || '').replace(/\|/g, '/').slice(0, 50)} (${v.id}) | ${n(v.impr)} | ${n(v.v3)} | ${p(v.hook)} | ${n(v.p25)} | ${n(v.p50)} | ${n(v.p75)} | ${n(v.p100)} | ${p(v.done)} | ${v.avg == null ? '—' : String(v.avg).replace('.', ',')} |`))
+  }
+  return out
+}
+
 export class AdsArchive {
   constructor({ meta }) {
     this.meta = meta
@@ -134,11 +215,11 @@ export class AdsArchive {
     return this.busy
   }
 
-  async all(pathname, params) {
+  async all(pathname, params, version = null) {
     const out = []
     let after
     for (let i = 0; i < 40; i++) {
-      const r = await this.meta.api(pathname, { ...params, limit: 500, ...(after ? { after } : {}) })
+      const r = await this.meta.api(pathname, { ...params, limit: 500, ...(after ? { after } : {}) }, undefined, version)
       out.push(...(r.data || []))
       after = r.paging?.cursors?.after
       if (!r.paging?.next || !after) break
@@ -157,20 +238,61 @@ export class AdsArchive {
     const adToday = ymdIn(info?.tz || this.meta.tz?.())
     // another project in the same account (Парк and the configured exclusions) is not Алия's
     const mine = ours(this.meta.cfg)
-    const life = (await this.all(`${acc}/insights`, { level: 'ad', date_preset: 'maximum', fields: FIELDS })).filter(mine)
-    const daily = (await this.all(`${acc}/insights`, { level: 'ad', date_preset: 'maximum', time_increment: 1, fields: 'ad_id,campaign_name,spend,impressions,inline_link_clicks,actions' })).filter(mine)
+    // the same call with Instagram profile visits when Meta knows the field (tryField: this version, then a newer one)
+    const withVisits = (params) => (this.meta.tryField
+      ? this.meta.tryField(VISITS, (v) => this.all(`${acc}/insights`, v ? { ...params, fields: `${params.fields},${VISITS}` } : params, v))
+      : this.all(`${acc}/insights`, params).then((data) => ({ data, field: false })))
+    const lifeR = await withVisits({ level: 'ad', date_preset: 'maximum', fields: FIELDS })
+    const dailyR = await withVisits({ level: 'ad', date_preset: 'maximum', time_increment: 1, fields: 'ad_id,campaign_name,spend,impressions,inline_link_clicks,actions' })
+    const life = lifeR.data.filter(mine), daily = dailyR.data.filter(mine)
+    // follows from ads: only if Meta answers with such action types at all (then a missing one is a real 0)
+    const followTypes = new Set()
+    const hasFollows = (rows) => { let any = false; for (const r of rows) for (const x of r.actions || []) if (/follow/i.test(x.action_type || '') && !/unfollow/i.test(x.action_type || '')) { followTypes.add(x.action_type); any = true } return any }
+    const lifeFol = hasFollows(life), dailyFol = hasFollows(daily)
     const ads = {}
     for (const r of life) {
       const was = old.ads[r.ad_id] || {}
-      ads[r.ad_id] = { name: r.ad_name, campaign: r.campaign_name, total: { ...adNumbers(r), freq: num(r.frequency), video: videoOf(r) }, set: was.set || null, changes: was.changes || [] }
+      ads[r.ad_id] = {
+        name: r.ad_name, campaign: r.campaign_name, ...(r.campaign_id ? { cid: r.campaign_id } : {}),
+        total: { ...adNumbers(r), freq: num(r.frequency), video: videoOf(r), visits: lifeR.field ? visitsOf(r) : null, follows: lifeFol ? followsOf(r.actions) ?? 0 : null },
+        set: was.set || null, changes: was.changes || [],
+      }
     }
     // { day: { ad_id: pack } } — by ad, so every sum can be split by kind
     const days = {}
     const last = {}
     for (const r of daily) {
       if (!last[r.ad_id] || r.date_start > last[r.ad_id]) last[r.ad_id] = r.date_start
-      if (r.date_start < adToday) (days[r.date_start] ||= {})[r.ad_id] = pack(adNumbers(r))
+      if (r.date_start < adToday) (days[r.date_start] ||= {})[r.ad_id] = packMore(r, dailyR.field, dailyFol)
     }
+    // every campaign as Meta counts it (reach of a campaign is never the sum of its ads); a failure keeps last night's
+    let campaigns = old.campaigns || null
+    let byBreakdown = null
+    try {
+      const cR = await withVisits({ level: 'campaign', date_preset: 'maximum', fields: CAMP_FIELDS })
+      const rows = cR.data.filter(mine)
+      const fol = hasFollows(rows)
+      // no follows among the actions: a breakdown that may carry them is tried once per run of the office
+      const st = (this.meta.fields ||= {})
+      if (!fol && !lifeFol && st[FOLLOW_BD] !== false) {
+        try {
+          const bd = (await this.all(`${acc}/insights`, { level: 'campaign', date_preset: 'maximum', breakdowns: FOLLOW_BD, fields: 'campaign_id,campaign_name,actions' })).filter(mine)
+          for (const r of bd) { const f = followsOf(r.actions); if (f != null) { byBreakdown ||= {}; byBreakdown[r.campaign_id] = (byBreakdown[r.campaign_id] || 0) + f; followTypes.add(`${FOLLOW_BD}:${r[FOLLOW_BD] ?? ''}`) } }
+          // accepted but without follows: no use asking every night
+          st[FOLLOW_BD] = !!byBreakdown
+        } catch (e) { if (refusedField(e, FOLLOW_BD)) st[FOLLOW_BD] = false }
+      }
+      campaigns = {}
+      for (const r of rows) {
+        const n = adNumbers(r)
+        campaigns[r.campaign_id] = {
+          name: r.campaign_name, objective: r.objective || null, spend: n.spend, impr: n.impr, reach: num(r.reach), freq: num(r.frequency), clicks: n.clicks,
+          chats: n.chats, deep: n.deep, leads: n.leads, visits: cR.field ? visitsOf(r) : null,
+          follows: fol ? followsOf(r.actions) ?? 0 : byBreakdown ? byBreakdown[r.campaign_id] ?? 0 : null,
+        }
+      }
+    } catch (e) { console.error('Архив рекламы, кампании:', e.message) }
+    const probe = { at: new Date().toISOString(), visits: lifeR.field ? lifeR.version || true : false, follows: lifeFol || dailyFol ? 'actions' : byBreakdown ? 'breakdown' : null, followTypes: [...followTypes].slice(0, 10) }
     // settings are read once, and again only for ads that ran lately: that is where budgets and audiences change
     for (const [id, x] of Object.entries(ads)) {
       if (x.set && 'post' in x.set && (last[id] || '') < addDays(today, -35)) continue
@@ -185,11 +307,14 @@ export class AdsArchive {
     }
     // who wrote and where the ads were shown, by ad: last 90 days and all time
     const cuts = {}
-    for (const [name, breakdowns] of Object.entries(CUTS)) {
-      for (const preset of ['last_90d', 'maximum']) {
+    // the hour «09:00:00 - 09:59:59» is kept as «09» (the ad account's time zone)
+    const word = (k, v) => (k === KIND_HOURS ? String(v || '').slice(0, 2) : WORDS[v] || v)
+    for (const [name, [breakdowns, presets]] of Object.entries(CUTS)) {
+      for (const preset of presets) {
+        // a cut Meta refused tonight keeps last night's rows (old) rather than an empty table
         cuts[`${name}:${preset}`] = await this.all(`${acc}/insights`, { level: 'ad', date_preset: preset, breakdowns, fields: 'ad_id,campaign_name,spend,impressions,inline_link_clicks,actions' })
-          .then((rows) => rows.filter(mine).map((r) => [r.ad_id, breakdowns.split(',').map((k) => WORDS[r[k]] || r[k]).join(' · '), ...pack(adNumbers(r))]))
-          .catch(() => [])
+          .then((rows) => rows.filter(mine).slice(0, CUT_ROWS).map((r) => [r.ad_id, breakdowns.split(',').map((k) => word(k, r[k])).join(' · '), ...pack(adNumbers(r))]))
+          .catch(() => old.cuts?.[`${name}:${preset}`] || [])
       }
     }
     // Meta gives new followers per day only for the last 30 days, so they are collected here day by day
@@ -199,7 +324,7 @@ export class AdsArchive {
       const f = await this.meta.insights(m.igUserId, ['follower_count'], { period: 'day', since: now - 29 * 86400, until: now }).catch(() => ({}))
       for (const x of Array.isArray(f.follower_count) ? f.follower_count : []) followers[ymd(new Date(Date.parse(x.end_time) - 864e5))] = num(x.value)
     }
-    write(FILE, { v: 2, day: today, until: shift(adToday, -1), tz: info?.tz || null, at: new Date().toISOString(), currency: info?.currency || this.meta.status().adAccount?.currency || '', ads, days, cuts, followers })
+    write(FILE, { v: 2, day: today, until: shift(adToday, -1), tz: info?.tz || null, at: new Date().toISOString(), currency: info?.currency || this.meta.status().adAccount?.currency || '', ads, days, cuts, followers, ...(campaigns ? { campaigns } : {}), probe })
     await this.checkForecasts(today).catch((e) => console.error('Прогнозы Алии:', e.message))
   }
 
@@ -326,6 +451,7 @@ export class AdsArchive {
       ...cutTables('## Кто пишет: возраст и пол, за всё время', a.cuts?.['age:maximum']),
       ...cutTables('## Места показа, последние 90 дней', a.cuts?.['place:last_90d']),
       ...cutTables('## Места показа, за всё время', a.cuts?.['place:maximum']),
+      ...moreSections(a, kinds, read(path.join(P.data, 'instagram', 'history.json'), { days: {} }).days || {}, this.meta?.cfg?.managerHours || {}, money),
       '', '## Переписки: дешевле всего живой разговор (расход от 10)', ...chatRated.slice(0, 5).map(([, x]) => line(x, per(x.total.spend, x.total.deep), 'за живой разговор')),
       '', '## Переписки: дороже всего живой разговор', ...chatRated.slice(-5).reverse().map(([, x]) => line(x, per(x.total.spend, x.total.deep), 'за живой разговор')),
       ...(forms.length ? ['', '## Форма-заявка: цена заявки (дешёвые сверху)', ...forms.map(([, x]) => line(x, per(x.total.spend, x.total.leads), `за заявку (${x.total.leads} заявок)`))] : []),

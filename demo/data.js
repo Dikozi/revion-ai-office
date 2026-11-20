@@ -284,6 +284,27 @@ function change(b) {
   }
 }
 
+// promotions, who really talks, placements and video — the same shape as ads-more.js adsMore()
+function demoMore() {
+  const g = (label, chats, deep, spend) => ({ label, chats, deep, spend, cpc: Math.round(spend / chats), cpq: deep ? Math.round(spend / deep) : null, live: Math.round((deep / chats) * 100), shareChats: Math.round((chats / 88) * 100), shareDeep: Math.round((deep / 44) * 100) })
+  const promo = (title, first, last, spend, reach, visits, follows, src) => ({ title, name: `Публикация в Instagram: ${title}`, kind: 'other', post: null, first: ago(first), last: ago(last), spend, impr: Math.round(reach * 1.6), reach, visits, visitsSrc: 'meta', follows, followsSrc: src, cpf: Math.round(spend / follows), cpv: Math.round(spend / visits) })
+  const promos = [promo('Вид с 11 этажа на закате', 12, 5, 45000, 24600, 820, 96, 'estimate'), promo('Ход строительства: монолит', 26, 19, 30000, 15800, 410, 38, 'estimate'), promo('5 вопросов застройщику до брони', 40, 33, 25000, 13100, 380, 44, 'estimate')]
+  const hours = [1, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 5, 4, 4, 5, 6, 7, 8, 9, 8, 6, 3]
+  return {
+    currency: '₸',
+    promos: { rows: promos, byFollowers: [promos[0], promos[2], promos[1]], byCost: [promos[2], promos[0], promos[1]], notes: ['подписки с рекламы Meta не даёт — оценка: посещения профиля × доля «подписались ÷ зашли в профиль» всего аккаунта за те же дни'] },
+    portrait: { rows: [g('25-34 · женщины', 30, 17, 168000), g('35-44 · мужчины', 21, 12, 131000), g('35-44 · женщины', 17, 8, 112000), g('25-34 · мужчины', 13, 5, 96000), g('45-54 · мужчины', 7, 2, 52000)], sex: [g('женщины', 49, 26, 290000), g('мужчины', 39, 18, 269000)], chats: 88, deep: 44, live: 50 },
+    regions: { rows: [g('Астана', 66, 36, 410000), g('Акмолинская обл.', 12, 5, 81000), g('Караганда', 10, 3, 68000)], chats: 88, deep: 44, astana: g('Астана', 66, 36, 410000), rest: g('другие регионы', 22, 8, 149000) },
+    hours: { byHour: hours.map((c, h) => ({ h, chats: c, deep: Math.round(c / 2), work: h >= 9 && h < 18 })), chats: 92, deep: 47, hours: 'пн–пт 9–18, сб 10–14', known: true, outside: 48, outsideDeep: 45, outsideWeek: 54, peak: [20, 19, 21] },
+    places: { rows: [g('Reels', 38, 23, 214000), g('лента', 26, 11, 182000), g('сторис', 20, 9, 141000), g('прочее', 4, 1, 22000)] },
+    videos: { rows: [
+      { id: 'v1', name: 'Reels «Вид с 11 этажа на закате»', impr: 52400, v3: 17300, hook: 33, done: 24, avg: 8.1 },
+      { id: 'v2', name: 'Сторис «Ход строительства»', impr: 31800, v3: 5700, hook: 18, done: 37, avg: 4.4 },
+      { id: 'v3', name: 'Планировка 2-комн. 61,9 м²', impr: 22600, v3: 7400, hook: 33, done: 10, avg: 6.0 },
+    ] },
+  }
+}
+
 export function demoData() {
   seed = 20261119
   const now = new Date().toISOString()
@@ -322,7 +343,7 @@ export function demoData() {
     ads: {
       currency: '₸', days, cur: week(true), prev: week(false),
       month: { cur: { spend: 1040000, results: 214 }, prev: { spend: 990000, results: 236 } },
-      rows: ROWS, median: { chat: 13500, form: 8182 },
+      rows: ROWS, median: { chat: 13500, form: 8182 }, more: demoMore(),
     },
     insta: {
       followers: 4870, cur: { reach: 26400, follows: 112, posts: 6, interactions: 1310 }, prev: { reach: 21800, follows: 87, posts: 5, interactions: 1040 }, follows: [],
@@ -441,12 +462,17 @@ export function previewExtra() {
         { date: d(8), day: 'пт', format: 'Пост', time: '19:00', topic: 'Рассрочка 0% на 12 месяцев', by: 'Мадина' },
         { date: d(9), day: 'сб', format: 'Сторис', time: '12:06', topic: 'Шоурум открыт в выходные' },
       ] },
-      pack: { week: '23–29 нояб.', status: 'waiting', proposal: 'demo-pack', items: [
+      pack: {
+        week: '23–29 нояб.', status: 'waiting', proposal: 'demo-pack',
+        strategy: ['Продаём 2-комн.: свободно 19, за 90 дн. продано 7 — самый быстрый тип (Ф2)', 'Для женщин 25–34: 34% переписок из рекламы и самый дешёвый живой разговор (Ф9)', 'Снимаем «дорого»: 11 отказов после показа — показываем рассрочку 0% на 12 месяцев (Ф6)'],
+        check: '🔎 Проверка цифр: у 1 пункта «почему» заменено цифрами офиса (у Алии были цифры не из брифа).',
+        items: [
         { date: d(0), time: '12:07', type: 'story', status: 'published', caption: 'Шоурум открыт в выходные', video: 'Close Up', result: 'охват 860, ответов 7, в профиль 12, вышли 31' },
-        { date: d(4), time: '19:04', type: 'post', status: 'waiting', caption: 'Планировка недели' },
-        { date: d(6), time: '19:06', type: 'carousel', status: 'waiting', caption: '5 вопросов застройщику' },
+        { date: d(4), time: '19:04', type: 'post', status: 'waiting', caption: 'Планировка недели', arg: { kind: 'продажа', product: '2-комн. 61,9 м²', usp: 'вид на парк с 8 этажа', audience: 'женщины 25–34', why: '2-комн. — 7 продаж за 90 дней, женщины 25–34 пишут 34% переписок', check: 'ok' } },
+        { date: d(6), time: '19:06', type: 'carousel', status: 'waiting', caption: '5 вопросов застройщику', arg: { kind: 'доверие', objection: 'дорого', usp: 'рассрочка 0% на 12 месяцев', audience: 'семьи', why: 'Отказ «Дорого»: 11 клиентов после показа', check: 'replaced' } },
         { date: d(5), time: '19:00', type: 'reel', manual: true, status: 'waiting', caption: 'Вид с 11 этажа' },
-      ] },
+        ],
+      },
       stats: { posts: 31, base: 5200, formats: [{ name: 'Reels', posts: 11, reach: 8100 }, { name: 'Карусели', posts: 8, reach: 5700 }, { name: 'Фото', posts: 12, reach: 3600 }], topics: [{ name: 'Вид из окна', posts: 6, reach: 8800 }, { name: 'Ход строительства', posts: 9, reach: 4300 }, { name: 'Рассрочка', posts: 5, reach: 6200 }], objects: [{ name: '2-комнатные', posts: 10, reach: 6100 }, { name: '3-комнатные', posts: 7, reach: 5300 }] },
     },
   }

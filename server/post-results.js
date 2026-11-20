@@ -10,6 +10,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { P } from './paths.js'
 import { storyLines, storyArchive } from './insta-archive.js'
+import { argLabel } from './content-brief.js'
 
 const FILE = path.join(P.data, 'memory', 'posts.json')
 const LINES = path.join(P.data, 'memory', 'smm-результаты.md')
@@ -54,8 +55,9 @@ function repair(state) {
 }
 
 // a post of the office's weekly pack (smm-pack keeps only the last 12 packs: an old mark is kept)
+// and the argument it carried (kind and УТП from Алия's plan), so next Thursday she sees which arguments worked
 function tag(p, item) {
-  if (item) { p.own = true; p.video = !!item.asVideo } else p.own ??= false
+  if (item) { p.own = true; p.video = !!item.asVideo; if (item.arg) p.arg = argLabel(item.arg) } else p.own ??= false
 }
 
 export class PostResults {
@@ -177,7 +179,7 @@ export class PostResults {
     if (isVideo(p) && d.views != null) parts.push(`просмотров ${fmt(d.views)}`)
     for (const [k, name] of [['saved', 'сохранений'], ['shares', 'репостов'], ['follows', 'подписок'], ['profile_visits', 'переходов в профиль']]) if (d[k] != null) parts.push(`${name} ${d[k]}`)
     if (d.watch) parts.push(`досмотр ${String(d.watch).replace('.', ',')} с`)
-    return `- ${ru(p.date)} ${label(p)} «${p.caption.replace(/\s+/g, ' ').slice(0, 70)}…»: ${parts.join(', ')}${verdict}`
+    return `- ${ru(p.date)} ${label(p)}${p.arg ? ` [${p.arg}]` : ''} «${p.caption.replace(/\s+/g, ' ').slice(0, 70)}…»: ${parts.join(', ')}${verdict}`
   }
 
   // the lines are rebuilt from posts.json every day: own posts, the others apart, the stories

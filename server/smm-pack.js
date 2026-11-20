@@ -12,6 +12,7 @@ import { EventEmitter } from 'node:events'
 import { P, isInside } from './paths.js'
 import { readPlan } from './initiative.js'
 import { makeVideo, pickTrack } from './motion.js'
+import { attachArgs, argLines, argOf } from './content-brief.js'
 
 const FILE = path.join(P.data, 'smm-packs.json')
 const PUB = path.join(P.data, 'smm', 'pub')
@@ -36,6 +37,8 @@ export function stickerText(st) {
   const note = st.link_note || st.note || st.url || st.link
   return `${kind}: ${st.text || st.question || ''}${opts}${note ? ` (${note})` : ''}`.slice(0, 300)
 }
+// the week's strategy from Алия's checked plan: the first message of the pack, before the days
+const strategyText = (pack) => `🎯 Стратегия недели${pack.week ? ` ${pack.week}` : ''}\n${pack.strategy.map((x, i) => `${i + 1}. ${x}`).join('\n')}`.slice(0, 3900)
 const plural = (n, one, few, many) => { const a = n % 10, b = n % 100; return `${n} ${a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 12 || b > 14) ? few : many}` }
 
 function run(cmd, args) {
@@ -187,9 +190,11 @@ export class SmmPack extends EventEmitter {
     const plan = readPlan(this.planOf(tasks[0]))
     // the marketers' reels from Алия's plan: no files, only a reminder and the morning check
     for (const r of (plan?.items || []).filter((x) => /рилс|reels/i.test(x.format || '') && x.date)) {
-      items.push({ id: crypto.randomBytes(4).toString('hex'), src: null, date: r.date, time: /^\d{2}:\d{2}$/.test(r.time || '') ? r.time : '18:00', type: 'reel', images: [], caption: r.topic || r.idea || '', sticker: null, manual: true, status: 'waiting' })
+      items.push({ id: crypto.randomBytes(4).toString('hex'), src: null, date: r.date, time: /^\d{2}:\d{2}$/.test(r.time || '') ? r.time : '18:00', type: 'reel', images: [], caption: r.topic || r.idea || '', sticker: null, manual: true, status: 'waiting', ...(argOf(r) ? { arg: argOf(r) } : {}) })
     }
     items.sort((a, b) => at(a) - at(b))
+    // the argument of every item («на каких цифрах это основано») from Алия's checked plan, by date and type
+    attachArgs(items, plan)
     // the new pack replaces a pack under review entirely and an approved one only on its own dates
     const active = ['waiting', 'scheduled', 'day-review', 'fixing', 'late']
     for (const old of this.state.packs.filter((x) => ['review', 'approved'].includes(x.status))) {
@@ -201,15 +206,16 @@ export class SmmPack extends EventEmitter {
       for (const op of this.initiative.state.proposals.filter((x) => x.kind === 'smm-pack' && x.pack === old.id && x.status === 'new')) { op.status = 'superseded'; op.decidedAt = new Date().toISOString() }
     }
     this.initiative.save()
-    const pack = { id: crypto.randomBytes(4).toString('hex'), plan: from, week: plan?.week || '', createdAt: new Date().toISOString(), status: 'review', items, problems, fixes: {} }
+    const pack = { id: crypto.randomBytes(4).toString('hex'), plan: from, week: plan?.week || '', createdAt: new Date().toISOString(), status: 'review', items, problems, fixes: {}, ...(plan?.checked ? { strategy: plan.strategy_checked || [], check: plan.checked.note || null } : {}) }
     this.state.packs = [...this.state.packs, pack].slice(-12)
     this.save()
     const auto = items.filter((x) => !x.manual).length
     const text = [
       `${plural(items.filter((x) => x.type === 'post' || x.type === 'carousel').length, 'пост', 'поста', 'постов')}, ${items.filter((x) => x.type === 'story').length} сторис${items.some((x) => x.type === 'reel') ? `, ${items.filter((x) => x.type === 'reel').length} рилс маркетологов` : ''} — по дням выше.`,
       `После «Утвердить неделю» ${plural(auto, 'публикация выйдет', 'публикации выйдут', 'публикаций выйдут')} по расписанию${this.videoOn ? ': сторис и посты — видео с музыкой (офис соберёт их сам), карусели — картинками' : ''}. Если какой-то день не нравится — «Исправить день»: Мадина переделает только его.${problems.length ? `\nНе вошло: ${problems.join('; ')}.` : ''}`,
+      ...(pack.check ? [pack.check] : []),
     ].join('\n\n')
-    this.initiative.add({ from: 'smm', kind: 'smm-pack', urgent: true, task: null, dueDays: 2, title: `Пакет недели${pack.week ? ` ${pack.week}` : ''}`, text, pack: pack.id, preview: items.filter((x) => x.images.length).map((x) => x.images[0]).slice(0, 10), days: this.dayTexts(pack.items) })
+    this.initiative.add({ from: 'smm', kind: 'smm-pack', urgent: true, task: null, dueDays: 2, title: `Пакет недели${pack.week ? ` ${pack.week}` : ''}`, text, pack: pack.id, preview: items.filter((x) => x.images.length).map((x) => x.images[0]).slice(0, 10), days: [...(pack.strategy?.length ? [{ date: null, text: strategyText(pack) }] : []), ...this.dayTexts(pack.items)] })
   }
 
   // one message per day: time, kind and the full text, as it will go out
@@ -217,7 +223,7 @@ export class SmmPack extends EventEmitter {
     const days = [...new Set(items.map((x) => x.date))].sort()
     return days.map((d) => {
       const list = items.filter((x) => x.date === d && !['superseded', 'declined'].includes(x.status))
-      const lines = list.map((x) => `• ${x.time} — ${KIND[x.type]}${x.type === 'reel' ? ` (снимают маркетологи): ${x.caption}` : x.sticker ? ` с наклейкой «${x.sticker}» — выложите сами` : ''}${x.type !== 'reel' && x.caption ? `\n${x.caption}` : ''}`)
+      const lines = list.map((x) => `• ${x.time} — ${KIND[x.type]}${x.type === 'reel' ? ` (снимают маркетологи): ${x.caption}` : x.sticker ? ` с наклейкой «${x.sticker}» — выложите сами` : ''}${x.arg ? `\n${argLines(x.arg).join('\n')}` : ''}${x.type !== 'reel' && x.caption ? `\n${x.caption}` : ''}`)
       return { date: d, text: `📅 ${label({ date: d }).trim()}\n\n${lines.join('\n\n')}`.slice(0, 3900) }
     })
   }
@@ -265,7 +271,7 @@ export class SmmPack extends EventEmitter {
     const text = [
       `Владелец просит исправить ${label({ date }).trim()} в пакете недели. Его правка: «${comment}».`,
       '', 'Сейчас в этот день:',
-      ...day.map((x) => `- ${x.time} ${KIND[x.type]}${x.sticker ? ` (наклейка: ${x.sticker})` : ''}; картинки: ${x.images.map(where).join(', ')}${x.caption ? `; текст: «${x.caption}»` : ''}`),
+      ...day.map((x) => `- ${x.time} ${KIND[x.type]}${x.sticker ? ` (наклейка: ${x.sticker})` : ''}; картинки: ${x.images.map(where).join(', ')}${x.caption ? `; текст: «${x.caption}»` : ''}${x.arg ? `; обоснование (сохрани его): ${argLines(x.arg).join(' ')}` : ''}`),
       '', 'Переделай только этот день по правке владельца. Новые макеты рисуй у себя (html, офис нарисует png). Что правка не задевает — оставь: в images можно указать путь к прежней картинке в _от_коллег.',
       `Запиши пакет.json только с пунктами дня ${date}: {"items":[{"date":"${date}","time":"ЧЧ:ММ","type":"post" или "story","images":[...],"caption":"полный текст","sticker":null}]}. Остальные дни не трогай.`,
     ].join('\n')
@@ -291,6 +297,11 @@ export class SmmPack extends EventEmitter {
       return
     }
     for (const x of old) x.status = 'superseded'
+    // the fixed day keeps the argument of the item it replaces (story ↔ story, post ↔ post, in order)
+    for (const story of [true, false]) {
+      const was = old.filter((x) => (x.type === 'story') === story && x.arg).sort((a, b) => at(a) - at(b))
+      fresh.filter((x) => (x.type === 'story') === story).sort((a, b) => at(a) - at(b)).forEach((x, i) => { if (was[i]) x.arg = was[i].arg })
+    }
     const approved = pack.status === 'approved'
     for (const x of fresh) x.status = approved ? 'day-review' : 'waiting'
     pack.items = [...pack.items, ...fresh].sort((a, b) => at(a) - at(b))

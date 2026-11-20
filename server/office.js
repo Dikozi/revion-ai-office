@@ -8,6 +8,7 @@ import { publicEmployee } from './employees.js'
 import { renderHtml, checkHtml } from './render.js'
 import { VIDEO_RE, storyboard, assembleReel, readSpec, todayDate } from './montage.js'
 import { collectSales, cleanExports, DATA_RE } from './sales.js'
+import { writeBrief } from './content-brief.js'
 import { Learning } from './learning.js'
 import { AdsArchive } from './ads-archive.js'
 import { checkFacts } from './facts.js'
@@ -473,6 +474,7 @@ export class Office extends EventEmitter {
       for (const n of sales.notes) lines.push(`- Не удалось получить: ${n}`)
     }
     if (fs.existsSync(path.join(P.work, task.id, '_данные', 'crm-сводка.md'))) lines.push('- _данные/crm-сводка.md — CRM компании: воронка, где и почему теряем клиентов, менеджеры, откуда приходят покупатели, какая реклама привела покупателей, кто покупает (пол, возраст), что покупают. Это факты о продажах — опирайся на них, а не на догадки по перепискам.')
+    if (fs.existsSync(path.join(P.work, task.id, '_данные', 'бриф-продаж.md'))) lines.push('- _данные/бриф-продаж.md — бриф продаж: пронумерованные факты Ф1, Ф2… (остатки и темп по комнатам, оплата, возражения из CRM, кто пишет из рекламы, аудитория Instagram, что зашло). Прочитай его первым: план строй на этих фактах и ссылайся на них номерами.')
     const rules = this.learning.rules(task.employee)
     if (rules.length) lines.push('', 'Чему ты научился на правках владельца — соблюдай:', ...rules.map((r) => `- ${r}`))
     // what the company already tried and how it ended (decisions and measured results)
@@ -576,6 +578,8 @@ export class Office extends EventEmitter {
           prepared.stats = await this.meta.collect(path.join(prepared.ws, '_данные'))
           try { this.ads.writeFor(path.join(prepared.ws, '_данные')) } catch (err) { console.error('Архив рекламы:', err.message) }
           await this.crm?.writeFor(path.join(prepared.ws, '_данные')).catch((err) => console.error('CRM:', err.message))
+          // the content plan is argued by numbers: facts Ф1… built by code (server/content-brief.js)
+          if (task.source === 'content-plan') await writeBrief(path.join(prepared.ws, '_данные'), { portal: this.portal, crm: this.crm, meta: this.meta, cfg: this.cfg }).catch((err) => console.error('Бриф продаж:', err.message))
         } catch (err) {
           this.finishTask(task.id, { ok: false, error: `Не удалось получить данные Meta: ${err.message}` })
           return

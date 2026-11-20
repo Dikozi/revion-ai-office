@@ -63,3 +63,13 @@ export function accountReason(status, disable) {
 }
 
 export const AD_PROBLEM = { DISAPPROVED: 'Meta отклонила объявление', WITH_ISSUES: 'у объявления ошибка', PENDING_BILLING_INFO: 'не хватает данных оплаты' }
+
+// Meta's answer «this field is not known here» (not a rate limit, not a timeout)
+export const refusedField = (e, field) => ![1, 2, 4, 17, 32, 613, 80002, 80004].includes(e?.graphCode) && (e?.graphCode === 100 || new RegExp(`${field}|nonexist|not valid|invalid|unknown`, 'i').test(String(e?.message || '')))
+// action types that look like Instagram follows from an ad; null when Meta gave none of them
+export function followsOf(actions) {
+  const list = (actions || []).filter((a) => /follow/i.test(a.action_type || '') && !/unfollow/i.test(a.action_type || ''))
+  return list.length ? list.reduce((t, a) => t + (Number(a.value) || 0), 0) : null
+}
+// instagram_profile_visits comes as a number (or, in some answers, as a list of {value})
+export const visitsOf = (r) => { const v = r?.instagram_profile_visits; const n = Array.isArray(v) ? v.reduce((t, x) => t + (Number(x?.value) || 0), 0) : Number(v); return Number.isFinite(n) ? n : 0 }

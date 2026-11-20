@@ -303,7 +303,6 @@ function kpi(title, before, after, unit, p, sub = '') {
   const good = up(p), color = good == null ? '#0B1728' : good ? '#1E956B' : '#C2410C'
   return `<div class="kpi"><div class="kt">${esc(title)}</div><div class="kv"><span class="was">${esc(before)}</span> <span class="to">→</span> <span style="color:${color}">${esc(after)}</span> <span class="unit">${esc(unit)}</span></div><div class="ks">${p?.partial ? '<b>база «Тогда» неполная</b>' : p && change(p) !== '—' ? `<b style="color:${color}">${esc(change(p))}</b> к «Тогда»` : ''}${sub ? `${p && change(p) !== '—' ? ' · ' : ''}${esc(sub)}` : ''}</div></div>`
 }
-const stat = (title, value, sub) => `<div class="kpi"><div class="kt">${esc(title)}</div><div class="kv">${esc(value)}</div><div class="ks">${esc(sub)}</div></div>`
 
 // the month table: every month with real numbers, the average month of each period and the growth
 function monthTable({ months, board, insta, s }) {
@@ -324,8 +323,7 @@ function monthTable({ months, board, insta, s }) {
   })
   rows.push(avgRow(`Итого «Сейчас» (${period(months.filter((m) => m.now))}${months.at(-1).partial ? `, по ${ru(months.at(-1).to).slice(0, 5)}` : ''})`, 'now', 'avg'))
   rows.push(`<tr class="growth"><td>Рост</td>${cols.map((c) => `<td>${esc(change(c.avg))}</td>`).join('')}</tr>`)
-  return `<table class="mt"><thead><tr><th>Месяц</th>${cols.map((c) => `<th>${esc(c.h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>
-  <div class="note">Зелёным рядом с месяцами «Сейчас» — во сколько раз больше обычного месяца «Тогда» (итого «Тогда» ÷ ${then.length}). «Рост» — итого «Сейчас» к итого «Тогда»${months.at(-1).partial ? `; ${esc(months.at(-1).label)} ещё идёт, поэтому итог «Сейчас» пока неполный` : ''}.</div>`
+  return `<table class="mt"><thead><tr><th>Месяц</th>${cols.map((c) => `<th>${esc(c.h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`
 }
 
 // ---------- the Instagram page ----------
@@ -356,7 +354,6 @@ function instaPage({ months, insta, s, head, labels, isNow, partial }) {
   })
   rows.push(`<tr class="avg"><td>Итого «Сейчас»</td>${tot('now')}</tr>`)
   rows.push(`<tr class="growth"><td>Рост</td>${cols.map((c) => `<td>${esc(c.end ? (fp ? change(fp) : '—') : change(c.p))}</td>`).join('')}</tr>`)
-  const post = (x) => `<li><a href="${esc(x.link)}">${esc(ru(x.day).slice(0, 5))} · ${x.reels ? 'Reels' : x.carousel ? 'Карусель' : 'Пост'}</a> — охват <b>${esc(n0(x.reach))}</b>, реакций ${esc(n0(x.likes + x.comments))}${x.caption ? `<br><span class="muted">${esc(x.caption)}</span>` : ''}</li>`
   return `<section class="page">${head('Instagram', 3)}
     <h1 class="h1s">Instagram${insta.username ? ` @${esc(insta.username)}` : ''}: «Тогда» и «Сейчас»</h1>
     <div class="kpis k3">
@@ -368,13 +365,11 @@ function instaPage({ months, insta, s, head, labels, isNow, partial }) {
       ${s.postReach?.then != null ? kpi('Охват публикации', n0(s.postReach.then), n0(s.postReach.now), '', s.postReach, 'в среднем на публикацию') : card('Публикаций', s.posts)}
     </div>
     <table class="mt it"><thead><tr><th>Месяц</th>${cols.map((c) => `<th>${esc(c.h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>
-    <div class="note">Зелёным — во сколько раз месяц «Сейчас» больше обычного месяца «Тогда». * ${esc(months.at(-1).label)} ещё идёт.</div>
     <div class="grid3">
       ${r.some((x) => x.endFollowers != null) ? `<div class="card"><h3>Подписчиков на конец месяца</h3>${bars(r.map((x) => x.endFollowers), { labels, now: isNow, partial, h: 95, fmt: (v) => (v >= 10000 ? `${n1(v / 1000)}k` : n0(v)) })}</div>` : ''}
       ${r.some((x) => x.net != null) ? `<div class="card"><h3>Прирост подписчиков</h3>${bars(r.map((x) => x.net), { labels, now: isNow, partial, h: 95 })}</div>` : `<div class="card"><h3>Средний охват публикации</h3>${bars(r.map((x) => x.postReach), { labels, now: isNow, partial, h: 95 })}</div>`}
       ${r.some((x) => x.reach != null) ? `<div class="card"><h3>Охват аккаунта</h3>${bars(r.map((x) => x.reach), { labels, now: isNow, partial, h: 95, fmt: (v) => (v >= 10000 ? `${n0(v / 1000)}k` : n0(v)) })}</div>` : ''}
     </div>
-    ${insta.top?.now?.length || insta.top?.then?.length ? `<div class="tops"><div class="card"><h3>Лучшие публикации «Сейчас»</h3><ol>${(insta.top.now || []).map(post).join('')}</ol></div><div class="card"><h3>Лучшие публикации «Тогда»</h3><ol>${(insta.top.then || []).map(post).join('') || '<li class="muted">нет публикаций</li>'}</ol></div></div>` : ''}
   </section>`
 }
 
@@ -386,15 +381,8 @@ export function pdfHtml({ months, board, insta, office, s, notes, who }) {
   const isNow = months.map((m) => m.now), partial = months.map((m) => m.partial)
   const work = monthsWord(now.length)
   const thenAvg = (vals) => avg(vals.filter((_, i) => !months[i].now).map((v) => v || 0))
-  const head = (title, page) => `<div class="top"><div class="brand"><span class="logo">R</span><b>REVION</b><span class="tag">Цифровая операционная система бизнеса</span></div><span class="pg">${esc(title)} · ${page}/${insta ? 4 : 3}</span></div>`
+  const head = (title, page) => `<div class="top"><div class="brand"><span class="logo">R</span><b>REVION</b><span class="tag">Цифровая операционная система бизнеса</span></div><span class="pg">${esc(title)} · ${page}/${insta ? 3 : 2}</span></div>`
   const series = (key) => board.rows.map((r) => r[key])
-  const listNow = (key, f, unit) => now.map((m) => { const i = months.indexOf(m); return `${m.label} — ${f(board.rows[i][key])}${unit}` }).join(', ')
-  const main = []
-  if (board && ok(s.revenue)) main.push(`Выручка: за ${esc(period(then))} — <b>${mln(s.revenue.then)}</b>, за ${esc(period(now))} — <b>${mln(s.revenue.now)}</b> (<b>${change(s.revenue)}</b>). По месяцам «Сейчас»: ${listNow('revenue', mlnN, ' млн ₸')}.`)
-  if (board && s.sales) main.push(`Продажи: ${then.map((m) => `${m.label} — ${board.rows[months.indexOf(m)].sales}`).join(', ')} (итого <b>${n0(s.sales.then)}</b>) → ${listNow('sales', n0, '')} (итого <b>${n0(s.sales.now)}</b>)${ok(s.sales) ? ` — <b>${change(s.sales)}</b>` : ''}.`)
-  if (board && s.share?.then != null) main.push(`Продано дома: было <b>${board.soldThen}</b> из ${board.sellable} квартир (${Math.round(s.share.then * 100)}%) на конец ${then.at(-1).gen} — стало <b>${board.soldNow}</b> (${Math.round(s.share.now * 100)}%).`)
-  if (insta && s.posts) main.push(`Instagram: публикаций ${then.map((m) => insta.rows[months.indexOf(m)].posts).join(' / ')} → ${now.map((m) => insta.rows[months.indexOf(m)].posts).join(' / ')} по месяцам${s.follows ? `, новых подписчиков ${n0(s.follows.then)} → ${n0(s.follows.now)}` : ''}.`)
-  if (s.office) main.push(`Офис REVION за ${work}: <b>${n0(s.office.tasks)}</b> ${plural(s.office.tasks, 'выполненная задача', 'выполненные задачи', 'выполненных задач')}, <b>${n0(s.office.reports)}</b> ${plural(s.office.reports, 'отчёт или план', 'отчёта и плана', 'отчётов и планов')}${s.office.published ? `, <b>${n0(s.office.published)}</b> ${plural(s.office.published, 'публикация вышла', 'публикации вышли', 'публикаций вышли')} в Instagram автоматически` : ''}.`)
 
   const page1 = `<section class="page">${head('Тогда → Сейчас', 1)}
     <div class="hero"><div class="eyebrow">Кейс · ${esc(who)}</div><h1>Что изменилось за ${esc(work)} работы с REVION</h1>
@@ -406,41 +394,22 @@ export function pdfHtml({ months, board, insta, office, s, notes, who }) {
       ${insta && s.followers?.thenEnd != null ? kpi('Подписчиков в Instagram', n0(s.followers.thenEnd), n0(s.followers.now), '', { ratio: s.followers.thenEnd > 0 ? s.followers.now / s.followers.thenEnd : null, pct: s.followers.thenEnd > 0 ? (s.followers.now / s.followers.thenEnd - 1) * 100 : null, then: s.followers.thenEnd, now: s.followers.now }, `конец ${then.at(-1).gen} → сейчас`) : insta && s.follows ? kpi('Новые подписчики, итого', n0(s.follows.then), n0(s.follows.now), '', s.follows) : ''}
     </div>
     <h2>По месяцам</h2>${monthTable({ months, board, insta, s })}
-    <h2>Главное</h2><ul class="main">${main.map((x) => `<li>${x}</li>`).join('')}</ul>
   </section>`
 
   const revAvg = board ? thenAvg(series('revenue')) : null, salesAvg = board ? thenAvg(series('sales')) : null
   const thin = (p) => (p?.partial ? ' (база неполная)' : '')
-  const nowNotes = (key, f, unit, base) => now.map((m) => { const v = board.rows[months.indexOf(m)][key]; return `<b>${esc(cap(m.label))}${m.partial ? '*' : ''}</b>: ${esc(f(v))}${unit} <span class="vs">${esc(vsThen(v, base))}</span>` }).join(' · ')
   const page2 = `<section class="page">${head('Дашборд', 2)}
     <h1 class="h1s">Дашборд: «Тогда» и «Сейчас»</h1>
     <div class="legend"><span><i style="background:#A9BBD0"></i>Тогда · ${esc(period(then))}</span><span><i style="background:#3185E8"></i>Сейчас · ${esc(period(now))}</span><span class="muted">пунктир — средний месяц «Тогда»; * месяц ещё идёт</span></div>
     <div class="grid">
-      ${board ? `<div class="card wide"><h3>Выручка по месяцам, млн ₸</h3><div class="note">полученные деньги (брони, взносы, рассрочки, полные оплаты)</div>${bars(series('revenue').map((v) => v / 1e6), { labels, now: isNow, partial, fmt: n1, avgLine: revAvg / 1e6, avgLabel: `в среднем «Тогда» ${n1(revAvg / 1e6)}${thin(s.revenue)}`, w: 620, h: 110 })}<div class="nn">${nowNotes('revenue', mlnN, ' млн', s.revenue?.partial ? null : revAvg)}</div></div>
-      <div class="card wide"><h3>Продажи по месяцам, квартир</h3><div class="note">новые продажи и рассрочки минус отмены</div>${bars(series('sales'), { labels, now: isNow, partial, avgLine: salesAvg, avgLabel: `в среднем «Тогда» ${n1(salesAvg)}${thin(s.sales)}`, w: 620, h: 100 })}<div class="nn">${nowNotes('sales', n0, ' кв.', s.sales?.partial ? null : salesAvg)}</div></div>
+      ${board ? `<div class="card wide"><h3>Выручка по месяцам, млн ₸</h3><div class="note">полученные деньги (брони, взносы, рассрочки, полные оплаты)</div>${bars(series('revenue').map((v) => v / 1e6), { labels, now: isNow, partial, fmt: n1, avgLine: revAvg / 1e6, avgLabel: `в среднем «Тогда» ${n1(revAvg / 1e6)}${thin(s.revenue)}`, w: 620, h: 110 })}</div>
+      <div class="card wide"><h3>Продажи по месяцам, квартир</h3><div class="note">новые продажи и рассрочки минус отмены</div>${bars(series('sales'), { labels, now: isNow, partial, avgLine: salesAvg, avgLabel: `в среднем «Тогда» ${n1(salesAvg)}${thin(s.sales)}`, w: 620, h: 100 })}</div>
       <div class="card"><h3>Продано м² по месяцам</h3><div class="note">площадь проданных квартир</div>${bars(series('m2'), { labels, now: isNow, partial, avgLine: thenAvg(series('m2')), avgLabel: `в среднем «Тогда»${thin(s.m2)}` })}</div>
       <div class="card"><h3>Продано дома</h3><div class="note">из ${board.sellable} квартир в продаже</div><div class="donuts">${donut(s.share?.then, '#A9BBD0', `${board.soldThen} кв.`)}<span class="arrow">→</span>${donut(s.share?.now, '#1E956B', `${board.soldNow} кв.`)}</div><div class="sell">конец ${esc(then.at(-1).gen)} → сегодня</div></div>` : ''}
     </div>
   </section>`
 
-  const team = office?.people?.length ? `<table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Задач за «Сейчас»</th></tr></thead><tbody>${office.people.map((p) => `<tr><td>${esc(p.name)}</td><td>${esc(p.title)}</td><td>${n0(p.tasks)}</td></tr>`).join('')}</tbody></table>` : ''
-  const o = s.office
   const page3 = insta ? instaPage({ months, insta, s, head, labels, isNow, partial }) : ''
-  const page4 = `<section class="page">${head('Работа офиса и оговорки', insta ? 4 : 3)}
-    <h1 class="h1s">Что делал офис REVION</h1>
-    ${o ? `<div class="kpis k6">${stat('Задач выполнено', n0(o.tasks), `за ${work}`)}${stat('Отчёты и планы', n0(o.reports), 'недельные, директора, контент')}${stat('Макеты и ролики', n0(o.designs), 'посты, сторис, монтаж')}${stat('Вышло автоматически', n0(o.published), 'публикаций в Instagram')}${stat('Из них видео', n0(o.videos), 'моушн-графика с музыкой')}${stat('Решений принято', n0(o.decisions), 'по предложениям офиса')}</div>` : ''}
-    ${office ? `<div class="card wide"><h3>Задачи ИИ-сотрудников по месяцам</h3><div class="note">офиса до ${esc(now[0].gen)} не было</div>${bars(office.rows.map((r) => r.tasks), { labels, now: isNow, partial, h: 80, w: 620 })}</div>` : ''}
-    ${team}
-    <h2>Источники и оговорки</h2>
-    <ul class="notes">
-      <li>Шахматка застройщика: статусы квартир, оплаты (брони, взносы, рассрочки), цены. Выручка — полученные деньги этой очереди по датам оплат.</li>
-      ${insta ? '<li>Instagram: публикации, охваты и подписки — официальные данные Meta.</li>' : ''}
-      <li>«Тогда» — ${esc(period(then))}, «Сейчас» — ${esc(period(now))} по ${esc(ru(now.at(-1).to))}. Все цифры — реальные суммы и количества за эти месяцы, без пересчётов${now.at(-1).partial ? `; ${esc(now.at(-1).label)} ещё не закончился, поэтому итог «Сейчас» пока неполный` : ''}.</li>
-      ${notes.map((x) => `<li>${esc(x)}</li>`).join('')}
-      <li>Рост совпал по времени с запуском REVION. На продажи влияют и другие факторы — сезон, цены, реклама, ход стройки, — поэтому это наблюдаемая связь, а не доказанная причина.</li>
-    </ul>
-    <div class="foot">Подготовлено автоматически офисом REVION ${esc(ru(addDays(now.at(-1).to, 1)))} · цифры из шахматки и Instagram без ручной правки</div>
-  </section>`
 
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>REVION · Тогда → Сейчас</title>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -485,7 +454,7 @@ table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 9.5pt;
 .foot { position: absolute; bottom: 9mm; left: 13mm; right: 13mm; font-size: 8pt; color: #5B6B7F; border-top: 1px solid #D5DCE6; padding-top: 5px; }
 .it td, .it th { font-size: 8.2pt; padding: 3px 5px; } .it td { white-space: nowrap; } .it .vs { font-size: 7pt; margin-left: 2px; } .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 6px; } .grid3 h3 { font-size: 9.5pt; } .tops { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; } .tops ol { margin: 4px 0 0; padding-left: 16px; } .tops li { font-size: 8.4pt; margin-bottom: 3px; } .tops a { color: #173F68; text-decoration: none; }
 .k3 { grid-template-columns: repeat(3, 1fr); } .kv.sm { font-size: 15pt; }
-</style></head><body>${page1}${page2}${page3}${page4}</body></html>`
+</style></head><body>${page1}${page2}${page3}</body></html>`
 }
 
 // ---------- the Excel: the same real numbers ----------

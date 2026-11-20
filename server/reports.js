@@ -25,6 +25,17 @@ const sorted = (o) => Object.entries(o || {}).sort((a, b) => b[1] - a[1])
 const avgOf = (v) => { const x = v.filter((y) => y != null); return x.length ? x.reduce((t, y) => t + y, 0) / x.length : null }
 const cur$ = (c) => (/USD/i.test(c || '') ? '$' : c || '')
 const price = (v, c) => (v == null ? '—' : `${n2(v)} ${cur$(c)}`.trim())
+// followers from ads of a period in one line (months.js promoPeriod), null when unknown:
+// «≈12 (оценка) из 40 новых подписчиков; цена подписчика с продвижений 0,85 $»
+export function promoText(p) {
+  if (!p || p.followers == null) return null
+  if (p.note === 'реклама не крутилась') return null
+  const est = p.followersSrc === 'estimate'
+  const parts = [`${est ? '≈' : ''}${n0(p.followers)}${est ? ' (оценка)' : ''}${p.accountFollows != null ? ` из ${n0(p.accountFollows)} новых подписчиков${p.accountDays < p.days ? ` (известно за ${p.accountDays} дн. из ${p.days})` : ''}` : ''}`]
+  if (p.cpf != null) parts.push(`цена подписчика с продвижений ${price(p.cpf, p.currency)}`)
+  else if (p.spendPromo > 0 && !p.followersPromo) parts.push(`на продвижения ${price(p.spendPromo, p.currency)} — подписчиков с них не видно`)
+  return parts.join('; ')
+}
 const short = (s, n) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > n ? `${s.slice(0, n - 1)}…` : s }
 
 export function weeksBook() { const b = read(WEEKS, null); return b?.weeks ? b : { weeks: {} } }
@@ -146,6 +157,7 @@ export function weekPrompt(f, { team = [], goals = null, memory = [], rules = ''
     `- Откуда покупатели: ${f.buyers.map(([k, v]) => `${k} ${v}`).join(', ') || 'нет данных'}`,
     `- Отказы недели: ${f.lost ?? 'нет данных'}; главные причины: ${f.refusals.map((r) => `${r.reason} ${r.count}${r.words.length ? ` («${r.words.join('»; «')}»)` : ''}`).join('; ') || 'нет'}`,
     f.cur.ads ? `- Реклама: расход ${n0(f.cur.ads.spend)} ${cur$(c)}, из них на охват и профиль ${n0(f.cur.ads.spendReach)} ${cur$(c)}; переписок ${f.cur.ads.chats}, заявок с формы ${f.cur.ads.forms}` : '',
+    promoText(f.cur.promo) ? `- Подписчики с рекламы: ${promoText(f.cur.promo)}` : '',
     goals ? `- Цели месяца: ${JSON.stringify({ sales: goals.sales, revenue: goals.revenue, maxCpr: goals.maxCpr })}` : '- Целей месяца нет.',
     ...(f.notes.length ? ['', 'Чего не хватает в данных:', ...f.notes.map((x) => `- ${x}`)] : []),
     memory.length ? `\nРешения последних недель и их замеры:\n${memory.join('\n')}` : '',
@@ -178,6 +190,7 @@ export function weekMessage(f, w, names) {
     `📊 Отчёт недели · ${spanRu(f.monday, f.sunday)}`, '━━━━━━━━━━━━━━',
     ...f.kpis.map((k) => `${k.icon} ${k.label}: ${fmtKpi(k, k.now, c)}${k.now != null ? ` ${arrowTg(k)}` : ''}${k.prev != null ? ` (было ${fmtKpi(k, k.prev, c)})` : ''}`),
     ...(f.extra ? [`   + вне шахматки ${mln(f.extra)} — не выручка`] : []),
+    ...(promoText(f.cur.promo) ? [`📣 Подписчики с рекламы: ${promoText(f.cur.promo)}`] : []),
     '', w.phrase,
   ]
   if (w.advice.length) {
@@ -274,6 +287,7 @@ export function weekMarkdown(f, w, names) {
   const t = [`# Отчёт недели ${dm(f.monday)}–${dm(f.sunday)}`, '', `**${w.phrase}**`, '', '## Цифры', '| показатель | неделя | прошлая | среднее 4 недель |', '|---|---|---|---|',
     ...f.kpis.map((k) => `| ${k.label} | ${fmtKpi(k, k.now, c)} | ${fmtKpi(k, k.prev, c)} | ${k.avg == null ? '—' : fmtKpi(k, k.avg, c)} |`),
     ...(f.extra ? ['', `Вне шахматки: ${mln(f.extra)} — не выручка.`] : []),
+    ...(promoText(f.cur.promo) ? ['', `Подписчики с рекламы: ${promoText(f.cur.promo)}.`] : []),
     '', `## Воронка недели`, f.funnel.map((s) => `${s.label} ${s.value ?? '—'}`).join(' → '),
     '', '## Откуда клиенты', f.sources.map(([k, v]) => `- ${k}: ${v}`).join('\n') || '- нет данных',
     '', '## Откуда покупатели', f.buyers.map(([k, v]) => `- ${k}: ${v}`).join('\n') || '- нет данных',
@@ -364,6 +378,7 @@ export function monthPrompt(F, { team = [], memory = [], rules = '', metrics = {
     '', `Главные цифры (${name}; было — прошлый месяц; среднее — до 12 месяцев до него):`,
     ...F.kpis.map((k) => `- ${k.label}: ${k.now == null ? 'нет данных' : k.fmt(k.now)} (было ${k.prev == null ? 'нет данных' : k.fmt(k.prev)}; среднее ${k.avg == null ? 'нет данных' : k.fmt(k.avg)})`),
     v.extra ? `- Деньги вне шахматки (НЕ выручка): ${mln(v.extra)}` : '',
+    promoText(v.promo) ? `- Подписчики с рекламы: ${promoText(v.promo)}` : '',
     `- Брони ${v.sales?.bookings ?? '—'}, снято броней ${v.sales?.unbooked ?? '—'}, отмен продаж ${v.sales?.cancels ?? '—'}; остаток квартир на конец ${v.stock?.left ?? '—'}`,
     F.goalRows.length ? `- Цели месяца: ${F.goalRows.map((g) => `${g.label}: план ${g.fmt(g.plan)}, факт ${g.fact == null ? 'нет данных' : g.fmt(g.fact)}`).join('; ')}` : '- Целей месяца не утверждали.',
     F.pace ? `- Темп к сдаче: продаём ${n1(F.pace.perMonth)} кв. в месяц, нужно ${F.pace.need == null ? '—' : n1(F.pace.need)}; продано ${F.pace.sold} из ${F.pace.target}` : '',
@@ -388,6 +403,7 @@ export function monthMessage(F, w, names) {
   const lines = [`🗓 Отчёт месяца · ${name}`, '━━━━━━━━━━━━━━',
     ...F.kpis.slice(0, 5).map((k) => `${{ sales: '🏠', money: '💰', leads: '👥', cpr: '💬', spend: '📣', followers: '📱' }[k.key]} ${k.label}: ${k.now == null ? 'нет данных' : k.fmt(k.now)}${k.now != null && k.good !== 'neutral' ? ` ${arrowTg(k)}` : ''}${k.prev != null ? ` (было ${k.fmt(k.prev)})` : ''}`),
     ...(F.m.values.extra ? [`   + вне шахматки ${mln(F.m.values.extra)} — не выручка`] : []),
+    ...(promoText(F.m.values.promo) ? [`📣 Подписчики с рекламы: ${promoText(F.m.values.promo)}`] : []),
     '', w.phrase]
   if (w.advice.length) { lines.push('', '📌 Советы на месяц:'); w.advice.forEach((a, i) => lines.push(`${i + 1}. ${a.who === 'owner' ? 'Вам' : names(a.who)}: ${a.what}`)) }
   if (w.rules.length) lines.push('', '📏 5 правил месяца — команда получает их в каждой задаче (в PDF).')
@@ -420,7 +436,8 @@ export function monthHtml(F, w, names) {
     <div class="card"><h2>Выводы</h2>${w.conclusions.length ? `<ol class="list">${w.conclusions.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>` : '<div class="nodata">выводов нет</div>'}</div>
     <div class="card"><h2>Последние месяцы <small>все месяцы — на следующей странице и в Excel</small></h2><table class="t"><tr><th>Месяц</th><th class="n">Продажи</th><th class="n">Брони</th><th class="n">Деньги</th><th class="n">Клиенты</th><th class="n">Цена переписки</th><th class="n">Подписчики</th></tr>${F.recent.map((x) => `<tr${x.key === F.key ? ' style="font-weight:700"' : ''}><td>${esc(monthLabel(x.key))}</td><td class="n">${n0(x.values.sales?.net)}</td><td class="n">${n0(x.values.sales?.bookings)}</td><td class="n">${esc(mln(x.values.money?.received))}</td><td class="n">${n0(x.values.leads?.total)}</td><td class="n">${esc(price(x.values.ads?.cpr, x.values.ads?.currency))}</td><td class="n">${n0(x.values.insta?.followersEnd)}</td></tr>`).join('')}</table><div class="unit">«—» — нет данных за месяц</div></div>
     <div class="card"><h2>Что ещё случилось</h2><table class="t"><tr><td>Брони за месяц</td><td class="n">${n0(v.sales?.bookings)}</td><td>Снято броней</td><td class="n">${n0(v.sales?.unbooked)}</td><td>Отмен продаж</td><td class="n">${n0(v.sales?.cancels)}</td></tr>
-      <tr><td>Средняя цена м² сделок</td><td class="n">${v.sales?.ppm ? `${n0(v.sales.ppm)} ₸` : '—'}</td><td>Осталось квартир</td><td class="n">${n0(v.stock?.left)}</td><td>Вне шахматки (не выручка)</td><td class="n">${v.extra ? esc(mln(v.extra)) : '—'}</td></tr></table></div>
+      <tr><td>Средняя цена м² сделок</td><td class="n">${v.sales?.ppm ? `${n0(v.sales.ppm)} ₸` : '—'}</td><td>Осталось квартир</td><td class="n">${n0(v.stock?.left)}</td><td>Вне шахматки (не выручка)</td><td class="n">${v.extra ? esc(mln(v.extra)) : '—'}</td></tr>
+      ${v.promo && v.promo.followers != null && v.promo.note !== 'реклама не крутилась' ? `<tr><td>Подписчики с рекламы${v.promo.followersSrc === 'estimate' ? ' (оценка)' : ''}</td><td class="n">${v.promo.followersSrc === 'estimate' ? '≈' : ''}${n0(v.promo.followers)}</td><td>Новых подписчиков всего</td><td class="n">${n0(v.promo.accountFollows)}</td><td>Цена подписчика с продвижений</td><td class="n">${esc(price(v.promo.cpf, v.promo.currency))}</td></tr>` : ''}</table></div>
     <div class="foot">Было — ${esc(F.prev ? monthLabel(F.prev.key) : 'нет прошлого месяца')}; среднее — обычный месяц за год до этого (сколько месяцев известно). Продажи — за вычетом отмен; деньги — полученные по шахматке; цена переписки — только реклама на переписки и форму-заявку.</div>
   </section>`
   const ch = F.charts
@@ -471,6 +488,7 @@ export function monthMarkdown(F, w, names) {
   const name = monthLabel(F.key)
   return `${[`# Отчёт месяца: ${name}`, '', `**${w.phrase}**`, '', '## Главные цифры', '| показатель | месяц | прошлый | среднее |', '|---|---|---|---|',
     ...F.kpis.map((k) => `| ${k.label} | ${k.now == null ? 'нет данных' : k.fmt(k.now)} | ${k.prev == null ? '—' : k.fmt(k.prev)} | ${k.avg == null ? '—' : k.fmt(k.avg)} |`),
+    ...(promoText(F.m.values.promo) ? ['', `Подписчики с рекламы: ${promoText(F.m.values.promo)}.`] : []),
     ...(F.goalRows.length ? ['', '## Цели месяца', ...F.goalRows.map((g) => `- ${g.label}: план ${g.fmt(g.plan)}, факт ${g.fact == null ? 'нет данных' : g.fmt(g.fact)}`)] : []),
     '', '## Выводы', ...w.conclusions.map((x, i) => `${i + 1}. ${x}`),
     '', '## Откуда покупатели', ...(F.buyers.length ? F.buyers.map(([k, x]) => `- ${k}: ${x}`) : ['- нет данных']),

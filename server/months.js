@@ -16,7 +16,8 @@ import { P } from './paths.js'
 import { readLog, soldDays, salesIn, SOLD, kzDay } from './sales-rules.js'
 import { moneyEvents, received, extraIncome } from './payments.js'
 import { realLeads, leadChannel, topStage, STAGE_ORDER, isNonTarget } from './crm.js'
-import { kindOf } from './ads-archive.js'
+import { kindOf, kindsOf } from './ads-archive.js'
+import { promoPeriod } from './ads-more.js'
 import { instaHistory, storyArchive } from './insta-archive.js'
 import { followerLog } from './followers.js'
 import { rateOn } from './fx.js'
@@ -92,7 +93,10 @@ export async function loadSources({ portal, crm, meta, live } = {}) {
     } catch (e) { src.errors.push(`шахматка: ${e.message}`) }
   }
   src.extra = extraIncome()
-  src.ads = adsFrom(read(path.join(P.data, 'ads', 'archive.json'), null), live?.ads?.days || [])
+  const archive = read(path.join(P.data, 'ads', 'archive.json'), null)
+  src.ads = adsFrom(archive, live?.ads?.days || [])
+  // followers from ads (promotions) need the archive's packs by ad
+  if (archive?.v === 2) { src.adsRaw = archive; src.adKinds = kindsOf(archive) }
   src.insta = instaHistory().days || {}
   src.followers = followerLog()
   src.stories = Object.values(storyArchive())
@@ -214,6 +218,8 @@ export function periodFacts(src, from, to) {
   } else out.ads = null
 
   out.insta = instaFacts(src, from, to)
+  // followers from ads: Meta's follows, else profile visits × the account's «followed ÷ visited» (an estimate, marked)
+  out.promo = src.adsRaw ? promoPeriod(src.adsRaw, src.adKinds || {}, src.insta || {}, from, to) : null
   return out
 }
 
@@ -311,7 +317,7 @@ export function monthRecord(src, key, { goals = null } = {}) {
   const partial = last >= today
   const to = partial ? addDays(today, -1) : last
   const f = periodFacts(src, `${key}-01`, to)
-  const values = { sales: f.sales, money: f.money, extra: f.extra, stock: f.stock, leads: f.leads, buyers: f.buyers, words: f.words, ads: f.ads, insta: f.insta, goals }
+  const values = { sales: f.sales, money: f.money, extra: f.extra, stock: f.stock, leads: f.leads, buyers: f.buyers, words: f.words, ads: f.ads, insta: f.insta, promo: f.promo, goals }
   return { key, from: `${key}-01`, to, partial, at: new Date().toISOString(), values, complete: notesOf(src, key, f, partial) }
 }
 

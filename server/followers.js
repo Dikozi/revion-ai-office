@@ -102,12 +102,13 @@ export function followersFacts({ log, norm, deep, currency, goal }) {
   ]
   if (deep.ads.length) {
     lines.push('Реклама за последние 3 дня:')
-    for (const a of deep.ads) lines.push(`- «${a.name}» (${a.goal}): расход ${a.spend} ${currency}, охват ${a.reach}${a.profileVisits != null ? `, посещений профиля ${a.profileVisits} по ${a.profileVisits ? (a.spend / a.profileVisits).toFixed(2) : '—'} ${currency}` : ''}${a.chats ? `, переписок ${a.chats}` : ''}`)
+    for (const a of deep.ads) lines.push(`- «${a.name}» (${a.goal}): расход ${a.spend} ${currency}, охват ${a.reach}${a.profileVisits != null ? `, посещений профиля ${a.profileVisits}${a.visitsEstimate ? ' (оценка по кликам)' : ''} по ${a.profileVisits ? (a.spend / a.profileVisits).toFixed(2) : '—'} ${currency}` : ''}${a.follows != null ? `, подписок с рекламы ${a.follows} (Meta)` : ''}${a.chats ? `, переписок ${a.chats}` : ''}`)
   } else lines.push('Реклама за последние 3 дня не крутилась.')
   const fresh = [...deep.media, ...deep.stories].filter((x) => Date.now() - Date.parse(x.date) < 3 * 864e5)
   lines.push(fresh.length ? `Опубликовано за 3 дня: ${fresh.map((x) => `${x.type} ${x.date.slice(8, 10)}.${x.date.slice(5, 7)} — подписок ${x.follows ?? '— (Meta не даёт для Reels)'}, посещений профиля ${x.profile_visits ?? '—'}, охват ${x.reach ?? '—'}`).join('; ')}.` : 'За 3 дня публикаций и сторис не было.')
   const fromMedia = fresh.reduce((t, x) => t + (x.follows || 0), 0)
-  const profileSpend = deep.ads.filter((a) => a.profileVisits != null).reduce((t, a) => t + a.spend, 0)
+  // older files have no `profile`: an ad with visits was a profile ad then
+  const profileSpend = deep.ads.filter((a) => a.profile ?? a.profileVisits != null).reduce((t, a) => t + a.spend, 0)
   if (g72 != null && profileSpend) {
     const est = Math.max(0, g72 - fromMedia)
     // Reels (the office's post-videos too) and stories older than a day have no follows here: unknown, not 0

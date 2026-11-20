@@ -3,13 +3,15 @@ import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { saveConfig } from './config.js'
 import { followerLog, growth, byDay } from './followers.js'
-import { DEFAULT_TZ, dayAgo, ours, kindByGoal, KIND_RU, accountActive, accountGrace, accountReason, AD_PROBLEM } from './ads-rules.js'
+import { DEFAULT_TZ, dayAgo, ours, kindByGoal, KIND_RU, accountActive, accountGrace, accountReason, AD_PROBLEM, refusedField, followsOf, visitsOf } from './ads-rules.js'
 import { adKinds } from './ads-archive.js'
 
 // Read-only access to Instagram and the Meta ad account. The office fetches the numbers itself
 // and hands the analyst plain files: the token never reaches an employee.
 
 const VERSION = 'v23.0'
+// insights fields Meta added after v23.0 (instagram_profile_visits, Dec 2025) are tried on this version too
+export const NEWER_VERSION = 'v24.0'
 const MAX_IMAGE = 5 * 1024 * 1024
 
 const ymd = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Almaty' }).format(d)
@@ -55,8 +57,8 @@ export class Meta extends EventEmitter {
     }
   }
 
-  async api(pathname, params = {}, token = this.m.token) {
-    const url = new URL(`https://graph.facebook.com/${this.m.apiVersion || VERSION}/${pathname}`)
+  async api(pathname, params = {}, token = this.m.token, version = null) {
+    const url = new URL(`https://graph.facebook.com/${version || this.m.apiVersion || VERSION}/${pathname}`)
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, typeof v === 'object' ? JSON.stringify(v) : String(v))
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(30000) })
     const data = await res.json().catch(() => ({}))
@@ -83,11 +85,11 @@ export class Meta extends EventEmitter {
   }
 
   // Every page of a Graph list (bounded): Meta cuts long lists into pages of `limit`.
-  async list(pathname, params = {}, maxPages = 20) {
+  async list(pathname, params = {}, maxPages = 20, version = null) {
     const out = []
     let after
     for (let i = 0; i < maxPages; i++) {
-      const r = await this.api(pathname, { limit: 500, ...params, ...(after ? { after } : {}) })
+      const r = await this.api(pathname, { limit: 500, ...params, ...(after ? { after } : {}) }, undefined, version)
       out.push(...(r.data || []))
       after = r.paging?.cursors?.after
       if (!r.paging?.next || !after) break
@@ -97,17 +99,33 @@ export class Meta extends EventEmitter {
 
   // Insights rows of the ad account, all pages, our own campaigns only (ads-rules.js ours).
   // `fields` may name objective / optimization_goal: if Meta refuses them, they are dropped.
-  async adInsights(params) {
+  async adInsights(params, version = null) {
     const act = `act_${String(this.m.adAccountId).replace(/^act_/, '')}`
     let rows
-    try { rows = await this.list(`${act}/insights`, params) } catch (e) {
+    try { rows = await this.list(`${act}/insights`, params, 20, version) } catch (e) {
       // only when Meta refused the fields: a rate limit or a timeout must not double the calls
       if (!/objective|optimization_goal|nonexist|#100|invalid|not valid/i.test(String(e.message))) throw e
       const fields = String(params.fields || '').split(',').filter((f) => !GOAL_FIELDS.includes(f)).join(',')
       if (fields === params.fields) throw e
-      rows = await this.list(`${act}/insights`, { ...params, fields })
+      rows = await this.list(`${act}/insights`, { ...params, fields }, 20, version)
     }
     return rows.filter(ours(this.cfg))
+  }
+
+  // A field Meta added lately: asked on the version in use, then on NEWER_VERSION. `call(version)` asks with the field,
+  // `call(null)` without it. A refusal is remembered until a restart (this.fields[field] = false); a working version is kept.
+  async tryField(field, call) {
+    const st = (this.fields ||= {})
+    if (st[field] !== false) {
+      for (const v of st[field] ? [st[field]] : [...new Set([this.m.apiVersion || VERSION, NEWER_VERSION])]) {
+        try { const data = await call(v); st[field] = v; return { data, field: true, version: v } } catch (e) { if (!refusedField(e, field)) throw e }
+      }
+    }
+    const was = st[field]
+    st[field] = false
+    // the call fails without the field too: the field was not the problem — ask again next time
+    const data = await call(null).catch((e) => { if (was !== false) delete st[field]; throw e })
+    return { data, field: false }
   }
 
   // The ad account's state: is it running, why not, its time zone and currency. Cached for `maxAgeMs`.
@@ -262,7 +280,10 @@ export class Meta extends EventEmitter {
     const ads = []
     if (this.m.adAccountId) {
       const day = (n) => ymd(new Date(Date.now() - n * 864e5))
-      const rows = (await this.adInsights({ level: 'ad', fields: 'ad_id,ad_name,campaign_name,spend,reach,actions', time_range: { since: day(2), until: day(0) } }).catch(() => [])).filter((r) => Number(r.spend) > 0)
+      const base = { level: 'ad', fields: 'ad_id,ad_name,campaign_name,spend,reach,actions', time_range: { since: day(2), until: day(0) } }
+      // Instagram profile visits from ads (Meta's own count, Dec 2025); without it — link clicks of profile ads, an estimate
+      const got = await this.tryField('instagram_profile_visits', (v) => this.adInsights(v ? { ...base, fields: `${base.fields},instagram_profile_visits` } : base, v)).catch(() => ({ data: [], field: false }))
+      const rows = got.data.filter((r) => Number(r.spend) > 0)
       const GOALS = { PROFILE_VISIT: 'посещения профиля', CONVERSATIONS: 'переписки', LEAD_GENERATION: 'форма-заявка', REACH: 'охват', LINK_CLICKS: 'клики', POST_ENGAGEMENT: 'вовлечённость', IMPRESSIONS: 'показы', THRUPLAY: 'просмотры видео' }
       this._dest ??= {}
       for (const r of rows) {
@@ -271,7 +292,8 @@ export class Meta extends EventEmitter {
         const act = (t) => Number((r.actions || []).find((a) => a.action_type === t)?.value || 0)
         // for an ad that leads to the Instagram profile Meta counts the visit as a link click
         const toProfile = s.destination_type === 'INSTAGRAM_PROFILE' || s.optimization_goal === 'PROFILE_VISIT'
-        ads.push({ name: r.ad_name, goal: toProfile ? 'посещения профиля' : GOALS[s.optimization_goal] || s.optimization_goal || '—', spend: Number(r.spend), reach: Number(r.reach || 0), profileVisits: toProfile ? act('link_click') : null, chats: act('onsite_conversion.messaging_conversation_started_7d') })
+        const follows = followsOf(r.actions)
+        ads.push({ name: r.ad_name, goal: toProfile ? 'посещения профиля' : GOALS[s.optimization_goal] || s.optimization_goal || '—', profile: toProfile, spend: Number(r.spend), reach: Number(r.reach || 0), profileVisits: got.field ? visitsOf(r) : toProfile ? act('link_click') : null, visitsEstimate: !got.field && toProfile, ...(follows != null ? { follows } : {}), chats: act('onsite_conversion.messaging_conversation_started_7d') })
       }
     }
     return { daily, media, stories, ads }

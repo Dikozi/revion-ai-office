@@ -602,3 +602,17 @@ body.no-scroll { overflow: hidden; }
   .arch-t td[data-l]::before { content: attr(data-l); display: block; font-size: 11px; color: var(--muted); font-weight: 700; }
   .arch-t td.arch-files:empty { display: none; }
 }
+
+/* weekly pack: the week's strategy and the argument of every item */
+.pack-strategy { margin: 0 0 12px; padding: 12px 14px; border-radius: 12px; background: var(--accent-tint); line-height: 1.45; overflow-wrap: anywhere; }
+.pack-strategy ol { margin: 6px 0 4px; padding-left: 20px; }
+.pack-strategy li { margin: 2px 0; }
+.pack-row { flex-wrap: wrap; }
+.pack-row .grow { flex-basis: 0; }
+.pack-arg { flex: 0 0 calc(100% - 162px); margin: -4px 0 0 162px; box-sizing: border-box; padding: 6px 10px; border-left: 3px solid var(--primary); background: var(--primary-tint); border-radius: 0 8px 8px 0; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.pack-arg.trust { border-left-color: var(--accent); background: var(--accent-tint); }
+.pack-arg.warn { border-left-color: var(--amber); }
+.pack-date { width: 150px; flex: none; }
+@media (max-width: 620px) { .pack-date { width: 76px; } .pack-arg { flex-basis: 100%; margin-left: 0; } }
+/* ads archive blocks on «Маркетинг»: numbers and dates stay on one line, the table scrolls inside its card */
+.ads-more td.num, .ads-more td.nw { white-space: nowrap; }

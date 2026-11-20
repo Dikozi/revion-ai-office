@@ -600,10 +600,53 @@ function marketingDetail(el) {
         <td class="small">${AD_KIND[r.kind] || ''}</td><td class="num">${money(r.spend, a.currency)}</td><td class="num">${got}</td><td class="num">${price}<div class="small muted">${unit}</div></td>${linked ? `<td class="num">${fmt(r.sales || 0)}</td><td class="num"><b style="color:${r.revenue > r.spend ? 'var(--primary)' : 'var(--red)'}">×${fmt(r.spend ? r.revenue / r.spend : 0, 1)}</b></td>` : ''}<td class="num">${fmt(r.ctr, 2)}%</td><td class="num">${fmt(r.freq, 1)}</td>
         <td><span class="chip ${VERDICT[r.verdict][0]}" title="${esc(VERDICT[r.verdict][2])}">${VERDICT[r.verdict][1]}</span></td></tr>` }).join('') || '<tr><td colspan="8" class="empty">За неделю объявления не крутились.</td></tr>'}
       </tbody></table></div><p class="small muted" style="margin-top:8px">Живой разговор — клиент написал 3 и больше сообщений (Meta считает сама, тексты не видны). Форму-заявку меряем ценой заявки; ${DATA.crm?.ads?.length ? 'какая реклама привела покупателей — в «Продажах», по CRM.' : 'брони и продажи по рекламе станут видны с WhatsApp API или CRM.'}</p></section>` : ''}
+    ${a?.more ? adsMore(a.more) : ''}
     <section class="grid split" style="margin-top:16px">
       ${reportCard('marketing', 'Отчёт Алии')}
       <div class="card"><div class="card-head"><h2>Лучшие посты Instagram</h2></div>${i ? postsGrid([...i.posts].sort((p, q) => q.reach - p.reach).slice(0, 4)) : '<div class="empty">Instagram не подключён.</div>'}</div>
     </section>`
+}
+
+// promotions and followers, who really talks, placements, video — counted by the office from the night ad archive
+const dm = (d) => (d ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : '')
+const SRC_CHIP = { meta: ['green', 'Meta'], estimate: ['amber', 'оценка'] }
+function adsMore(m) {
+  const c = m.currency || ''
+  const pc = (v) => (v == null ? '—' : `${v}%`)
+  const out = []
+  const pr = m.promos?.rows || []
+  if (pr.length) {
+    const name = (x) => esc(String(x.title || x.name || '').slice(0, 60))
+    const tops = [
+      m.promos.byFollowers?.[0] ? `Больше всего подписчиков: <b>«${name(m.promos.byFollowers[0])}»</b> — ${fmt(m.promos.byFollowers[0].follows)}` : '',
+      m.promos.byCost?.[0] ? `дешевле всего подписчик: <b>«${name(m.promos.byCost[0])}»</b> — ${money(m.promos.byCost[0].cpf, c)}` : '',
+    ].filter(Boolean)
+    out.push(`<section class="card ads-more" style="margin-top:16px"><div class="card-head"><h2>${icon('person_add')} Продвижения: подписчики с рекламы</h2><span class="small muted">за всё время каждого продвижения</span></div>
+      ${tops.length ? `<p class="small" style="margin:0 0 8px">${tops.join('; ')}.</p>` : ''}
+      <div class="table-wrap"><table><thead><tr><th>Продвижение</th><th>Даты</th><th class="num">Расход</th><th class="num">Охват</th><th class="num">В профиль</th><th class="num">Подписчики</th><th class="num">Цена подписчика</th></tr></thead><tbody>
+      ${pr.slice(0, 8).map((x) => `<tr><td>${x.post ? `<a href="${esc(x.post)}" target="_blank" rel="noopener">${name(x)}</a>` : name(x)}${x.kind === 'chat' ? '<div class="small muted">реклама на переписки</div>' : ''}</td><td class="small nw">${x.first ? `${dm(x.first)}–${dm(x.last)}` : '—'}</td><td class="num">${money(x.spend, c)}</td><td class="num">${fmt(x.reach)}</td><td class="num">${fmt(x.visits)}${x.visitsSrc === 'clicks' ? '<div class="small muted">по кликам</div>' : ''}</td><td class="num">${x.follows == null ? '<span class="muted">нет данных</span>' : `${fmt(x.follows)} <span class="chip ${SRC_CHIP[x.followsSrc]?.[0] || ''}">${SRC_CHIP[x.followsSrc]?.[1] || ''}</span>`}</td><td class="num">${money(x.cpf, c)}</td></tr>`).join('')}
+      </tbody></table></div>
+      <p class="small muted" style="margin:8px 0 0">Охват — по кампании, как считает Meta (охваты объявлений не складываются).${pr.some((x) => x.followsSrc === 'estimate') ? ' «Оценка» — посещения профиля × доля «подписались ÷ зашли в профиль» всего аккаунта за те же дни: Meta не даёт подписки по рекламе.' : ''}${m.promos.notes?.length ? ` ${esc(m.promos.notes.filter((t) => !/^подписки с рекламы Meta/.test(t)).map((t) => t[0].toUpperCase() + t.slice(1)).join('. '))}${m.promos.notes.some((t) => !/^подписки с рекламы Meta/.test(t)) ? '.' : ''}` : ''}</p></section>`)
+  }
+  const pt = m.portrait, rg = m.regions, hr = m.hours
+  const left = pt?.chats ? `<div class="card"><div class="card-head"><h2>${icon('forum')} Кто реально разговаривает</h2><span class="small muted">90 дней · реклама на переписки</span></div>
+    ${pt.rows.map((g) => `<div class="stat-row"><span class="grow">${esc(g.label)} <span class="small muted">· ${fmt(g.deep)} живых из ${fmt(g.chats)}</span></span><div class="meter" style="width:80px"><i style="width:${Math.max(3, g.shareDeep || 0)}%;background:var(--primary)"></i></div><b>${pc(g.shareDeep)}</b><span class="small muted" style="min-width:76px;text-align:right">${money(g.cpq, c)}</span></div>`).join('')}
+    <p class="small muted" style="margin:8px 0 0">Доля — от всех живых разговоров (клиент написал 3+ сообщения), справа — цена живого. ${pt.sex?.length ? `Пол: ${esc(pt.sex.map((g) => `${g.label} — ${g.shareDeep ?? 0}% живых, живой по ${money(g.cpq, c)}`).join('; '))}.` : ''}</p></div>` : ''
+  const hourBars = hr?.chats ? (() => { const max = Math.max(1, ...hr.byHour.map((x) => x.chats)); return `<div style="display:flex;align-items:flex-end;gap:2px;height:56px;margin-top:10px" aria-label="Переписки по часам">${hr.byHour.map((x) => `<i title="${x.h}:00 — ${x.chats} переписок${x.work ? '' : ', менеджер не работает'}" style="flex:1;min-width:0;height:${Math.max(2, Math.round((x.chats / max) * 100))}%;border-radius:2px;background:${x.work ? 'var(--accent)' : 'var(--amber)'}"></i>`).join('')}</div><div class="small muted" style="display:flex;justify-content:space-between"><span>0 ч</span><span>12 ч</span><span>23 ч</span></div>` })() : ''
+  const right = rg?.chats || hr?.chats ? `<div class="card"><div class="card-head"><h2>${icon('schedule')} Откуда и когда пишут</h2><span class="small muted">90 дней · время Астаны</span></div>
+    ${rg?.chats ? `<div class="stat-row"><span class="grow">Астана</span><b>${pc(rg.astana.shareChats)}</b><span class="small muted">переписок · ${pc(rg.astana.shareDeep)} живых</span></div><div class="stat-row"><span class="grow">Другие регионы${rg.rows.find((g) => g.label !== 'Астана') ? ` <span class="small muted">· больше всего ${esc(rg.rows.find((g) => g.label !== 'Астана').label)}</span>` : ''}</span><b>${pc(rg.rest.shareChats)}</b><span class="small muted">переписок · ${pc(rg.rest.shareDeep)} живых</span></div>` : ''}
+    ${hr?.chats ? `${hourBars}<div class="legend" style="margin-top:6px"><span><i style="background:var(--accent)"></i>менеджер работает</span><span><i style="background:var(--amber)"></i>не работает</span></div>
+      <p class="small" style="margin:8px 0 0">${hr.known ? `Вне часов менеджера (${esc(hr.hours)}) пишут <b>${pc(hr.outside)}</b>, с выходными ≈${pc(hr.outsideWeek)}.` : 'Часы менеджера не заданы.'}${hr.peak?.length ? ` Чаще всего — в ${hr.peak.map((h) => `${h}–${h + 1} ч`).join(', ')}.` : ''}</p>` : ''}</div>` : ''
+  if (left || right) out.push(`<section class="grid g2" style="margin-top:16px">${left}${right}</section>`)
+  const pl = (m.places?.rows || []).filter((g) => g.chats > 0)
+  const vd = m.videos?.rows || []
+  const places = pl.length ? `<div class="card ads-more"><div class="card-head"><h2>${icon('view_carousel')} Места показа</h2><span class="small muted">90 дней · реклама на переписки</span></div>
+    <div class="table-wrap"><table><thead><tr><th>Место</th><th class="num">Переписок</th><th class="num">Цена переписки</th><th class="num">Цена живого</th></tr></thead><tbody>${pl.map((g) => `<tr><td>${esc(g.label)}</td><td class="num">${fmt(g.chats)}</td><td class="num">${money(g.cpc, c)}</td><td class="num">${money(g.cpq, c)}</td></tr>`).join('')}</tbody></table></div></div>` : ''
+  const videos = vd.length ? `<div class="card ads-more"><div class="card-head"><h2>${icon('movie')} Видео в рекламе</h2><span class="small muted">крутились за 90 дней</span></div>
+    <div class="table-wrap"><table><thead><tr><th>Видео</th><th class="num">Цепляет</th><th class="num">До конца</th><th class="num">Ср. время</th></tr></thead><tbody>${vd.slice(0, 5).map((v) => `<tr><td style="min-width:150px">${esc(String(v.name || '').replace(/^Публикация в Instagram:\s*/i, '').slice(0, 50))}<div class="small muted">${fmt(v.impr)} показов</div></td><td class="num">${pc(v.hook)}</td><td class="num">${pc(v.done)}</td><td class="num">${v.avg == null ? '—' : `${fmt(v.avg, 1)} с`}</td></tr>`).join('')}</tbody></table></div>
+    <p class="small muted" style="margin:8px 0 0">Цепляет — сколько показов досмотрели хотя бы 3 секунды; до конца — сколько из них досмотрели видео целиком.</p></div>` : ''
+  if (places || videos) out.push(`<section class="grid g2" style="margin-top:16px">${places}${videos}</section>`)
+  return out.join('')
 }
 
 function postsGrid(posts) {
@@ -1352,13 +1395,24 @@ function planCard(g) {
 
 const PACK_ST = { waiting: ['ждёт утверждения', ''], scheduled: ['запланировано', 'blue'], published: ['вышло', 'green'], reminded: ['напомнил вам', 'amber'], failed: ['ошибка', 'red'], late: ['время прошло', ''], missed: ['пропущено', 'red'], declined: ['отклонено', ''], fixing: ['Мадина исправляет', 'amber'], 'day-review': ['ждёт утверждения дня', 'amber'], superseded: ['заменено', ''] }
 const PACK_KIND = { post: 'Пост', carousel: 'Карусель', story: 'Сторис', reel: 'Рилс' }
+// «на каких цифрах это основано»: what the item sells (or which objection it answers), to whom, and why
+function packArg(a) {
+  if (!a) return ''
+  const who = a.audience ? ` · для: ${esc(a.audience)}` : ''
+  const head = a.kind === 'доверие'
+    ? `🛡 Снимаем возражение: <b>${esc(a.objection || a.usp || '—')}</b>${a.objection && a.usp ? ` · ${esc(a.usp)}` : ''}${who}`
+    : `🎯 Продаём: <b>${esc(a.product || '—')}</b>${a.usp ? ` · УТП: ${esc(a.usp)}` : ''}${who}`
+  const why = a.check === 'none' ? '📊 Без обоснования — Алия не сослалась на цифры' : `📊 ${a.check === 'replaced' ? 'Цифры офиса' : 'Почему'}: ${esc(a.why)}`
+  return `<div class="pack-arg${a.kind === 'доверие' ? ' trust' : ''}${a.check !== 'ok' ? ' warn' : ''}"><div>${head}</div><div class="muted">${why}</div></div>`
+}
 function packCard(pk) {
   if (!pk) return `<section class="card" style="margin-top:16px"><div class="card-head"><h2>${icon('event_upcoming')} Пакет недели</h2></div><div class="empty">Появится, когда Мадина подготовит посты и сторис по утверждённому контент-плану.</div></section>`
   const owner = ME.user.role === 'owner'
   const day = (d) => new Date(`${d}T12:00:00+05:00`).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Almaty' })
   return `<section class="card" style="margin-top:16px"><div class="card-head"><h2>${icon('event_upcoming')} Пакет недели${pk.week ? ` ${esc(pk.week)}` : ''}</h2>
     ${pk.proposal && owner ? `<div class="chips"><button class="btn btn-sm btn-primary" data-act="yes" data-id="${pk.proposal}">Утвердить неделю</button><button class="btn btn-sm" data-act="no" data-id="${pk.proposal}">Не публиковать</button></div>` : `<span class="chip ${pk.status === 'approved' ? 'green' : ''}">${pk.status === 'approved' ? 'утверждён — выходит сам' : pk.status === 'declined' ? 'отклонён' : pk.status === 'superseded' ? 'заменён новым' : 'на утверждении'}</span>`}</div>
-    <div class="list">${pk.items.map((x) => { const st = PACK_ST[x.status] || [x.status, '']; return `<div class="list-item"><div style="width:150px"><b>${day(x.date)}</b><div class="small muted">${esc(x.time)}</div></div><div class="grow"><b>${PACK_KIND[x.type] || esc(x.type)}</b>${x.manual ? `<span class="small muted"> · ${x.type === 'reel' ? 'снимают маркетологи' : `вручную, наклейка: ${esc(x.sticker || '')}`}</span>` : ''}<div class="small muted">${esc(x.caption)}</div>${x.video ? `<div class="small muted">🎬 видео с музыкой «${esc(x.video)}»</div>` : ''}${x.videoError ? `<div class="small" style="color:var(--amber-ink)">видео: ${esc(x.videoError)}</div>` : ''}${x.error ? `<div class="small" style="color:var(--red)">${esc(x.error)}</div>` : ''}${x.result ? `<div class="small muted">📊 ${esc(x.result)}</div>` : ''}</div><span class="chip ${st[1]}">${x.permalink ? `<a href="${esc(x.permalink)}" target="_blank" rel="noopener">${st[0]}</a>` : st[0]}</span></div>` }).join('')}</div>
+    ${pk.strategy?.length ? `<div class="pack-strategy"><b>🎯 Стратегия недели</b><ol>${pk.strategy.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>${pk.check ? `<div class="small" style="color:var(--amber-ink)">${esc(pk.check)}</div>` : ''}</div>` : pk.check ? `<div class="small" style="color:var(--amber-ink)">${esc(pk.check)}</div>` : ''}
+    <div class="list">${pk.items.map((x) => { const st = PACK_ST[x.status] || [x.status, '']; return `<div class="list-item pack-row"><div class="pack-date"><b>${day(x.date)}</b><div class="small muted">${esc(x.time)}</div></div><div class="grow"><b>${PACK_KIND[x.type] || esc(x.type)}</b>${x.manual ? `<span class="small muted"> · ${x.type === 'reel' ? 'снимают маркетологи' : `вручную, наклейка: ${esc(x.sticker || '')}`}</span>` : ''}<div class="small muted">${esc(x.caption)}</div>${x.video ? `<div class="small muted">🎬 видео с музыкой «${esc(x.video)}»</div>` : ''}${x.videoError ? `<div class="small" style="color:var(--amber-ink)">видео: ${esc(x.videoError)}</div>` : ''}${x.error ? `<div class="small" style="color:var(--red)">${esc(x.error)}</div>` : ''}${x.result ? `<div class="small muted">📊 ${esc(x.result)}</div>` : ''}</div><span class="chip ${st[1]}">${x.permalink ? `<a href="${esc(x.permalink)}" target="_blank" rel="noopener">${st[0]}</a>` : st[0]}</span>${packArg(x.arg)}</div>` }).join('')}</div>
     <p class="small muted">Посты и сторис без наклеек офис публикует сам в своё время через официальный Instagram API — только после вашего «Утвердить». После утверждения сторис и посты из одной картинки офис превращает в 15-секундные видео с музыкой (если видео не собралось — выходит картинка), карусели остаются картинками. Сторис — около 12:00, посты — около 19:00. Сторис с наклейками и рилсы — напоминанием. Каждое утро офис проверяет, всё ли вышло.</p></section>`
 }
 

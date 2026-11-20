@@ -15,10 +15,10 @@ The owner talks to it like to a team lead: send a task in Telegram → the manag
 | Agent | Role |
 |---|---|
 | **Manager** | Turns a free-text request into a JSON plan (steps, assignees, dependencies, inputs). Writes the Monday weekly report and the monthly report, answers questions about past work. |
-| **Marketing analyst** | Analyses Meta Ads + Instagram. Keeps a full archive of every ad since 2023, makes forecasts that the office later checks against reality automatically. Watches ads every 3 hours and writes a ready conclusion ("I looked at it… I recommend turning it off"). Builds the weekly content plan. |
+| **Marketing analyst** | Analyses Meta Ads + Instagram. Keeps a full archive of every ad since 2023, makes forecasts that the office later checks against reality automatically. Watches ads every 3 hours and writes a ready conclusion ("I looked at it… I recommend turning it off"). Sees who *really* talks to sales (age, gender, region and hour of the conversations that went past 3 messages, not of all clicks), what each Instagram promotion costs per new follower, which placement and which video hook sell. Builds the weekly content plan **from a sales brief computed by code** — every post must name what it sells, to whom, and cite numbered facts. |
 | **Sales analyst** | Apartment sales chart, bookings, stalled deals, CRM funnel, refusal reasons, call scripts. |
 | **Revenue analyst** | Money actually received (bookings, down payments, installment payments), sales pace vs. the building's handover date, monthly goals. |
-| **SMM** | Posts, carousels and stories as finished images in the brand style (HTML → Chrome render), then turned into 15-second motion-graphics videos with music, and **auto-published** to Instagram on schedule after one weekly approval. |
+| **SMM** | Posts, carousels and stories as finished images in the brand style (HTML → Chrome render), then turned into 15-second motion-graphics videos with music, and **auto-published** to Instagram on schedule after one weekly approval. The approval screen shows the week's strategy and, for every post, the product, USP, audience and the numbers behind the choice. |
 | **Video editor** | Cuts 15-second Reels from raw construction-site footage (agent picks moments from storyboards, ffmpeg does the cut). |
 
 Everything that leaves the company (posts, messages, spending) needs an explicit owner approval. Agents prepare drafts; humans decide.
@@ -51,7 +51,7 @@ flowchart LR
   R --> IG[Instagram publishing API]
 ```
 
-- **Node.js, zero npm dependencies** — only built-in modules (`http`, `child_process`, `crypto`, …). ~11.6k lines across 42 server modules, plus ~4k lines of front end. PDFs and images are rendered with headless Chrome over the DevTools pipe, video with ffmpeg, Excel files are written by hand (`xlsx.js`, no library).
+- **Node.js, zero npm dependencies** — only built-in modules (`http`, `child_process`, `crypto`, …). ~12.6k lines across 44 server modules, plus ~5k lines of front end. PDFs and images are rendered with headless Chrome over the DevTools pipe, video with ffmpeg, Excel files are written by hand (`xlsx.js`, no library).
 - **Each AI employee is a short-lived `claude -p` process**, started for one task and closed afterwards — the office costs nothing while idle. See [`server/claude.js`](server/claude.js).
 - **Code does the math, the model writes the words.** All numbers, charts and comparisons in reports are computed deterministically; the model gets the finished numbers and writes the conclusion and 3 recommendations. This made reports both cheaper and impossible to "hallucinate" numbers into.
 - **Self-updating server:** a systemd timer checks GitHub every 3 minutes, syntax-checks the new version, waits until no agent is running, swaps the code, and **rolls back automatically** if the office doesn't come up in 20 seconds.
@@ -85,6 +85,12 @@ Every completed task is measured 7 days later ("worked / didn't / not enough dat
 
 ### 6. Content that publishes itself — safely
 After one weekly approval (with per-day "fix this day" edits), posts and stories are rendered, converted into 15-second motion videos (layout blocks appear in sequence, prices count up, the last frame is verified to equal the approved image), and published via the official Instagram API at slightly varied times. If the video fails, the approved image goes out instead. An automatic layout check in Chrome catches overlapping text before anything is sent for approval.
+
+### 7. Argued content: every post has to justify itself with numbers
+Agents writing marketing copy love to invent plausible statistics. So the weekly content plan starts from a **sales brief built by code** ([`server/content-brief.js`](server/content-brief.js)): numbered facts `Ф1…Фn` — unsold stock and sales pace by apartment type, payments, refusal reasons from the CRM, who writes from ads, the Instagram audience, what content worked before. The marketing agent must return, for each item, `kind` (sell / build trust), `focus` (product, USP, audience or the objection it answers), the fact ids it relies on and a short "why". Then code checks every number in every "why" against the cited facts (`checkPlan`): unknown fact ids are dropped, a "why" with a number that isn't in its facts is replaced by the facts themselves, and the owner sees how many were replaced. The SMM agent gets the focus of each post; the published result is tagged `[sale · USP]`, so next week's brief knows which argument actually worked. No extra model calls — just tighter inputs and a deterministic check.
+
+### 8. Getting more out of the Meta API without guessing
+[`server/ads-more.js`](server/ads-more.js) turns the nightly ad archive into answers the owner actually asked for: reach of each promotion as Meta counts it per campaign (reach is never the sum of ads), profile visits and new followers with an explicit **"Meta" vs "estimate"** label when the API doesn't report follows; the age/gender/region portrait of *live* conversations; conversations by hour shifted to local time and compared with the sales manager's working hours; cost per live conversation by placement; video hook rate (3-second views ÷ impressions) and watch-through. Fields that differ between Graph API versions are probed once (`tryField`) and remembered, so a refused field never breaks the nightly run.
 
 ---
 

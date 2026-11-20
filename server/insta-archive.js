@@ -8,6 +8,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { P } from './paths.js'
 import { followerLog } from './followers.js'
+import { argLabel } from './content-brief.js'
 
 const DIR = path.join(P.data, 'instagram')
 const STORIES = path.join(DIR, 'stories.json')
@@ -95,6 +96,7 @@ export class InstaArchive {
       const next = {
         id: s.id, date: s.timestamp, type: s.media_type === 'VIDEO' ? 'video' : 'photo', link: s.permalink || old.link || '',
         own: !!item, pack: item?.id || null, asVideo: item ? !!item.asVideo : null, time: item?.time || null, caption: item ? String(item.caption || '').slice(0, 120) : '',
+        arg: item?.arg ? argLabel(item.arg) : old.arg || null,
       }
       // a failed request keeps the earlier numbers: a null never overwrites a known value
       const nums = Object.fromEntries(STORY_METRICS.map((k) => [k, val(r?.[k]?.total_value?.value ?? r?.[k]?.values)]))
@@ -208,7 +210,7 @@ export function storyLines(days = 14) {
   const usual = mid(list.map((s) => s.reach))
   const avg = (l) => Math.round(l.reduce((t, s) => t + s.reach, 0) / l.length)
   const ru = (iso) => new Date(iso).toLocaleDateString('ru-RU', { timeZone: 'Asia/Almaty', day: '2-digit', month: '2-digit' })
-  const name = (s) => `${ru(s.date)}${s.time ? ` ${s.time}` : ''} ${s.type === 'video' ? 'видео' : 'картинка'}${s.caption ? ` «${s.caption.replace(/\s+/g, ' ').slice(0, 50)}»` : ''}${s.own ? '' : ' (не из пакета)'}`
+  const name = (s) => `${ru(s.date)}${s.time ? ` ${s.time}` : ''} ${s.type === 'video' ? 'видео' : 'картинка'}${s.arg ? ` [${s.arg}]` : ''}${s.caption ? ` «${s.caption.replace(/\s+/g, ' ').slice(0, 50)}»` : ''}${s.own ? '' : ' (не из пакета)'}`
   const exits = (s) => s.nav?.tap_exit ?? null
   const extra = (s) => [s.replies != null ? `ответов ${s.replies}` : '', s.profile_visits != null ? `в профиль ${s.profile_visits}` : '', s.follows != null ? `подписок ${s.follows}` : '', exits(s) != null ? `вышли ${exits(s)}` : ''].filter(Boolean).join(', ')
   const line = (s) => `- ${name(s)}: охват ${s.reach}${usual ? ` (×${(s.reach / usual).toFixed(1).replace('.', ',')})` : ''}${extra(s) ? `, ${extra(s)}` : ''}`
