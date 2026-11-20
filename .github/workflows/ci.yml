@@ -1,0 +1,18 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax check of every module (no dependencies to install)
+        run: for f in server/*.js demo/*.js portal/*.js web/*.js tools/*.mjs; do node --check "$f" || exit 1; done
+      - name: Tests
+        run: node --test
+      - name: Demo site builds
+        run: node tools/build-pages.mjs

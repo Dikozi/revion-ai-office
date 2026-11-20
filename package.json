@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Виртуальный офис агентов Claude Code",
+  "description": "REVION — an AI office of Claude Code agents running a real-estate developer's sales & marketing analytics and Instagram content",
   "scripts": {
-    "start": "node server/main.js"
+    "start": "node server/main.js",
+    "test": "node --test",
+    "demo": "node demo/server.js --all",
+    "build:pages": "node tools/build-pages.mjs"
   },
   "engines": {
     "node": ">=20"

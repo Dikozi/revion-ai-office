@@ -1,5 +1,12 @@
 # REVION — an AI office that runs a sales & marketing department
 
+[![CI](https://github.com/Dikozi/revion-ai-office/actions/workflows/ci.yml/badge.svg)](https://github.com/Dikozi/revion-ai-office/actions/workflows/ci.yml)
+[![Live demo](https://img.shields.io/badge/live%20demo-open-3185E8)](https://dikozi.github.io/revion-ai-office/)
+![Built with Claude Code](https://img.shields.io/badge/built%20with-Claude%20Code-D97757)
+![Node 22, zero dependencies](https://img.shields.io/badge/node%2022-zero%20dependencies-1E956B)
+
+**▶ [Open the live demo](https://dikozi.github.io/revion-ai-office/)** — the production portal on made-up data of a fictional developer, runs in your browser, no sign-up · **Docs in English:** [features](docs/en/FEATURES.md) · [reliability & security](docs/en/SECURITY.md)
+
 REVION is a "virtual office" of six AI employees built on **Claude Code**. It runs 24/7 on a small cloud server and does the analytical and content work for a residential real-estate developer in Kazakhstan: it reads ad performance, the apartment sales chart, CRM leads and Instagram stats, writes weekly and monthly reports, proposes actions, and produces and publishes the company's Instagram content.
 
 The owner talks to it like to a team lead: send a task in Telegram → the manager agent returns a structured plan → the owner taps **Approve** → specialist agents do the work and send back files, images, videos and reports.
@@ -107,9 +114,11 @@ Login is passwordless via the Telegram bot, with roles (owner / leadership read-
 
 <img src="screenshots/mobile.png" width="300" alt="Mobile">
 
-### Run the demo locally
+### Run the demo
 
-Requires Node.js 20+. No `npm install` needed.
+Online: **https://dikozi.github.io/revion-ai-office/** (built from this repo by GitHub Actions on every push — [`tools/build-pages.mjs`](tools/build-pages.mjs) swaps the portal's server calls for `demo/data.js`, which generates the data in the browser with today's dates).
+
+Locally — requires Node.js 20+, no `npm install` needed:
 
 ```bash
 node demo/server.js --all
@@ -141,7 +150,7 @@ The demo serves the real portal front end with made-up data for a fictional resi
 | [`CLAUDE.md`](CLAUDE.md), [`docs/`](docs/) | The project memory Claude Code works from: rules, architecture, decisions, what is in progress (in Russian) |
 
 ```bash
-node --test                 # anonymisation tests
+node --test                 # anonymisation, fact-check and sales-rules tests
 node demo/server.js --all   # portal on demo data → http://127.0.0.1:3791
 ```
 
